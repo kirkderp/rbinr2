@@ -1,8 +1,8 @@
 use rbm_core::{ToolError, ToolResult};
 use serde_json::{Value, json};
 
-use crate::search::glob_or_substring_match;
 use crate::filters::paginate;
+use crate::search::glob_or_substring_match;
 use crate::search::{validate_hex_pattern, validate_search_pattern};
 use crate::session::Session;
 
@@ -25,7 +25,7 @@ pub async fn flags(
         "flagspaces" => session.cmdj("fsj").await?,
         _ => unreachable!("mode is normalized before dispatch"),
     };
-    let filtered = filter_flag_rows(raw, filter)?;
+    let filtered = filter_flag_rows(raw, filter);
     let paged = if mode == "flagspaces" {
         filtered
     } else {
@@ -40,15 +40,15 @@ pub async fn flags(
     }))
 }
 
-fn filter_flag_rows(value: Value, filter: Option<&str>) -> ToolResult<Value> {
+fn filter_flag_rows(value: Value, filter: Option<&str>) -> Value {
     let Some(pattern) = filter.filter(|s| !s.is_empty()) else {
-        return Ok(value);
+        return value;
     };
     let needle = pattern.to_lowercase();
     let Value::Array(rows) = value else {
-        return Ok(value);
+        return value;
     };
-    Ok(Value::Array(
+    Value::Array(
         rows.into_iter()
             .filter(|row| {
                 ["name", "realname", "flagname", "demname", "space"]
@@ -57,7 +57,7 @@ fn filter_flag_rows(value: Value, filter: Option<&str>) -> ToolResult<Value> {
                     .any(|s| glob_or_substring_match(&needle, &s.to_lowercase()))
             })
             .collect(),
-    ))
+    )
 }
 
 /// Return a global xref inventory from r2 axlj.
@@ -212,6 +212,11 @@ pub async fn semantic_search(
     }))
 }
 
+/// Normalize r2 flag listing modes.
+///
+/// # Errors
+///
+/// Returns an error if the mode is not one of the supported flag listings.
 pub fn normalize_flags_mode(mode: &str) -> ToolResult<&'static str> {
     match mode.trim() {
         "" | "flags" | "fj" => Ok("flags"),
@@ -223,6 +228,11 @@ pub fn normalize_flags_mode(mode: &str) -> ToolResult<&'static str> {
     }
 }
 
+/// Normalize r2 string listing modes.
+///
+/// # Errors
+///
+/// Returns an error if the mode is not one of the supported string listings.
 pub fn normalize_string_mode(mode: &str) -> ToolResult<&'static str> {
     match mode.trim() {
         "" | "auto" | "psj" => Ok("auto"),
@@ -236,6 +246,11 @@ pub fn normalize_string_mode(mode: &str) -> ToolResult<&'static str> {
     }
 }
 
+/// Normalize r2 plugin listing modes.
+///
+/// # Errors
+///
+/// Returns an error if the mode is not one of the supported plugin listings.
 pub fn normalize_plugin_mode(mode: &str) -> ToolResult<&'static str> {
     match mode.trim() {
         "" | "asm" | "arch" | "Laq" => Ok("asm"),
@@ -249,6 +264,11 @@ pub fn normalize_plugin_mode(mode: &str) -> ToolResult<&'static str> {
     }
 }
 
+/// Normalize r2 semantic search modes.
+///
+/// # Errors
+///
+/// Returns an error if the mode is not one of the supported search commands.
 pub fn normalize_semantic_search_mode(mode: &str) -> ToolResult<&'static str> {
     match mode.trim() {
         "" | "opcode_type" | "type" | "/atj" => Ok("opcode_type"),

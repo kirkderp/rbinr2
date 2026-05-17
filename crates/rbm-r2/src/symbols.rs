@@ -109,7 +109,11 @@ pub fn filter_by_string_content(value: Value, pattern: &str) -> ToolResult<Value
     let filtered: Vec<Value> = arr
         .into_iter()
         .filter(|item| {
-            let s = item.get("string").and_then(Value::as_str).unwrap_or("").to_lowercase();
+            let s = item
+                .get("string")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_lowercase();
             glob_or_substring_match(&needle, &s)
         })
         .collect();

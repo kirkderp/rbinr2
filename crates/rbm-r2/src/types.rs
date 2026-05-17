@@ -1,8 +1,8 @@
 use rbm_core::{ToolError, ToolResult};
 use serde_json::{Value, json};
 
-use crate::search::glob_or_substring_match;
 use crate::filters::paginate;
+use crate::search::glob_or_substring_match;
 use crate::session::Session;
 
 /// Validate a type name or format before interpolating it into an r2 command.
@@ -56,7 +56,7 @@ pub async fn types_view(
                 .and_then(Value::as_array)
                 .cloned()
                 .unwrap_or_default();
-            let filtered = filter_named_rows(Value::Array(types), filter)?;
+            let filtered = filter_named_rows(Value::Array(types), filter);
             paginate(filtered, offset, limit)
         }
         "functions" => {
@@ -66,48 +66,40 @@ pub async fn types_view(
                 .and_then(Value::as_array)
                 .cloned()
                 .unwrap_or_else(|| raw.as_array().cloned().unwrap_or_default());
-            let filtered = filter_named_rows(Value::Array(types), filter)?;
+            let filtered = filter_named_rows(Value::Array(types), filter);
             paginate(filtered, offset, limit)
         }
-        "structs" => text_result(session.cmd("ts").await?),
-        "enums" => text_result(session.cmd("te").await?),
-        "unions" => text_result(session.cmd("tu").await?),
-        "typedefs" => text_result(session.cmd("tt").await?),
+        "structs" => text_result(&session.cmd("ts").await?),
+        "enums" => text_result(&session.cmd("te").await?),
+        "unions" => text_result(&session.cmd("tu").await?),
+        "typedefs" => text_result(&session.cmd("tt").await?),
         "c" => {
             let command = type_name.map_or_else(|| "tc".to_string(), |name| format!("tc {name}"));
-            text_result(session.cmd(command).await?)
+            text_result(&session.cmd(command).await?)
         }
         "view" => {
             let name = type_name
                 .ok_or_else(|| ToolError::invalid("type_name is required for mode=view"))?;
-            text_result(session.cmd(format!("tv {name}")).await?)
+            text_result(&session.cmd(format!("tv {name}")).await?)
         }
         "format" => {
             let name = type_name
                 .ok_or_else(|| ToolError::invalid("type_name is required for mode=format"))?;
-            text_result(session.cmd(format!("t {name}")).await?)
+            text_result(&session.cmd(format!("t {name}")).await?)
         }
         "cast" => {
             let name = type_name
                 .ok_or_else(|| ToolError::invalid("type_name is required for mode=cast"))?;
             let addr = addr.ok_or_else(|| ToolError::invalid("addr is required for mode=cast"))?;
-            text_result(session.cmd(format!("tp {name} {addr}")).await?)
+            text_result(&session.cmd(format!("tp {name} {addr}")).await?)
         }
         "type_xrefs" => {
-            let command = if let Some(name) = type_name {
-                format!("tx {name}")
-            } else {
-                "tx".to_string()
-            };
-            text_result(session.cmd(command).await?)
+            let command = type_name.map_or_else(|| "tx".to_string(), |name| format!("tx {name}"));
+            text_result(&session.cmd(command).await?)
         }
         "function_type_xrefs" => {
-            let command = if let Some(addr) = addr {
-                format!("txf {addr}")
-            } else {
-                "txf".to_string()
-            };
-            text_result(session.cmd(command).await?)
+            let command = addr.map_or_else(|| "txf".to_string(), |addr| format!("txf {addr}"));
+            text_result(&session.cmd(command).await?)
         }
         "type_links" => session.cmdj("tlj").await?,
         "calling_conventions" => session.cmdj("tccj").await?,
@@ -125,22 +117,22 @@ pub async fn types_view(
     }))
 }
 
-fn text_result(raw: String) -> Value {
+fn text_result(raw: &str) -> Value {
     json!({
         "format": "text",
         "text": raw,
     })
 }
 
-fn filter_named_rows(value: Value, filter: Option<&str>) -> ToolResult<Value> {
+fn filter_named_rows(value: Value, filter: Option<&str>) -> Value {
     let Some(pattern) = filter.filter(|s| !s.is_empty()) else {
-        return Ok(value);
+        return value;
     };
     let needle = pattern.to_lowercase();
     let Value::Array(rows) = value else {
-        return Ok(value);
+        return value;
     };
-    Ok(Value::Array(
+    Value::Array(
         rows.into_iter()
             .filter(|row| {
                 ["name", "type"]
@@ -149,7 +141,7 @@ fn filter_named_rows(value: Value, filter: Option<&str>) -> ToolResult<Value> {
                     .any(|s| glob_or_substring_match(&needle, &s.to_lowercase()))
             })
             .collect(),
-    ))
+    )
 }
 
 /// Normalize accepted type modes.

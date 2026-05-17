@@ -364,10 +364,10 @@ fn graph_command(kind: &str, format: &str, addr: Option<&str>) -> String {
         "mermaid" => "m",
         _ => unreachable!("graph format is normalized before command construction"),
     };
-    match addr {
-        Some(addr) => format!("{prefix}{suffix} @ {addr}"),
-        None => format!("{prefix}{suffix}"),
-    }
+    addr.map_or_else(
+        || format!("{prefix}{suffix}"),
+        |addr| format!("{prefix}{suffix} @ {addr}"),
+    )
 }
 
 /// Normalize r2 graph kinds exposed through ag.
@@ -1288,39 +1288,6 @@ pub fn extract_callee_targets(refs: &Value) -> Vec<(u64, String)> {
     out
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{
-        normalize_graph_format, normalize_graph_kind, normalize_hash_algorithm, validate_addr,
-    };
-
-    #[test]
-    fn validate_addr_error_names_mcp_addr_parameter() {
-        let err = validate_addr("").expect_err("empty addr should fail");
-
-        assert!(
-            err.to_string().contains("parameter named \"addr\""),
-            "{err}"
-        );
-    }
-
-    #[test]
-    fn graph_aliases_normalize_to_r2_graph_commands() {
-        assert_eq!(normalize_graph_kind("cfg").unwrap(), "function");
-        assert_eq!(normalize_graph_kind("agC").unwrap(), "global_callgraph");
-        assert_eq!(normalize_graph_format("graphviz").unwrap(), "dot");
-        assert_eq!(normalize_graph_format("mmd").unwrap(), "mermaid");
-        assert!(normalize_graph_format("gml").is_err());
-    }
-
-    #[test]
-    fn hash_algorithm_defaults_and_rejects_unknown_values() {
-        assert_eq!(normalize_hash_algorithm("").unwrap(), "sha256");
-        assert_eq!(normalize_hash_algorithm("entropy").unwrap(), "entropy");
-        assert!(normalize_hash_algorithm("ssdeep").is_err());
-    }
-}
-
 /// Return normalized xrefs to or from an address.
 ///
 /// # Errors
@@ -1502,4 +1469,37 @@ pub fn project_function_signature(addr: &str, raw: &Value) -> Value {
         "arg_count": first.get("count").and_then(Value::as_u64).unwrap_or(args.len() as u64),
         "args": args,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        normalize_graph_format, normalize_graph_kind, normalize_hash_algorithm, validate_addr,
+    };
+
+    #[test]
+    fn validate_addr_error_names_mcp_addr_parameter() {
+        let err = validate_addr("").expect_err("empty addr should fail");
+
+        assert!(
+            err.to_string().contains("parameter named \"addr\""),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn graph_aliases_normalize_to_r2_graph_commands() {
+        assert_eq!(normalize_graph_kind("cfg").unwrap(), "function");
+        assert_eq!(normalize_graph_kind("agC").unwrap(), "global_callgraph");
+        assert_eq!(normalize_graph_format("graphviz").unwrap(), "dot");
+        assert_eq!(normalize_graph_format("mmd").unwrap(), "mermaid");
+        assert!(normalize_graph_format("gml").is_err());
+    }
+
+    #[test]
+    fn hash_algorithm_defaults_and_rejects_unknown_values() {
+        assert_eq!(normalize_hash_algorithm("").unwrap(), "sha256");
+        assert_eq!(normalize_hash_algorithm("entropy").unwrap(), "entropy");
+        assert!(normalize_hash_algorithm("ssdeep").is_err());
+    }
 }

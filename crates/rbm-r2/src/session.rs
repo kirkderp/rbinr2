@@ -47,8 +47,9 @@ impl Session {
 
     /// Request shutdown of the r2 worker thread.
     ///
-    /// This is explicit so r2_close can stop a session even if concurrent
-    /// tool handlers still hold cloned Arc<Session> references.
+    /// This is explicit so `r2_close` can stop a session even if concurrent
+    /// tool handlers still hold cloned `Arc<Session>` references.
+    #[must_use]
     pub fn shutdown(&self) -> bool {
         self.tx.send(SessionCmd::Shutdown).is_ok()
     }
@@ -113,8 +114,12 @@ impl Session {
 
     /// Apply temporary disassembly settings and return the previous values.
     ///
-    /// Call restore_asm_settings before returning to keep persistent sessions
+    /// Call `restore_asm_settings` before returning to keep persistent sessions
     /// from leaking architecture overrides into later tool calls.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading or applying an r2 asm setting fails.
     pub async fn apply_asm_settings(
         &self,
         arch: Option<&str>,
@@ -132,7 +137,11 @@ impl Session {
         Ok(snapshot)
     }
 
-    /// Restore settings captured by apply_asm_settings.
+    /// Restore settings captured by `apply_asm_settings`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if restoring an r2 asm setting fails.
     pub async fn restore_asm_settings(&self, snapshot: AsmSettingsSnapshot) -> ToolResult<()> {
         if let Some(bits) = snapshot.bits {
             self.cmd(format!("e asm.bits={bits}")).await?;
@@ -305,7 +314,8 @@ impl SessionManager {
     }
 
     /// Set the per-tool r2 command timeout.
-    pub fn with_tool_timeout(mut self, tool_timeout: Duration) -> Self {
+    #[must_use]
+    pub const fn with_tool_timeout(mut self, tool_timeout: Duration) -> Self {
         self.tool_timeout = tool_timeout;
         self
     }
@@ -352,18 +362,20 @@ impl SessionManager {
             return Ok((existing, canonical, false));
         }
 
-        let new_session =
-            tokio::time::timeout(self.open_timeout, Session::spawn(canonical.clone(), self.tool_timeout))
-                .await
-                .map_err(|_| {
-                    ToolError::backend(
-                        "r2",
-                        format!(
-                            "session open timed out after {}s",
-                            self.open_timeout.as_secs()
-                        ),
-                    )
-                })??;
+        let new_session = tokio::time::timeout(
+            self.open_timeout,
+            Session::spawn(canonical.clone(), self.tool_timeout),
+        )
+        .await
+        .map_err(|_| {
+            ToolError::backend(
+                "r2",
+                format!(
+                    "session open timed out after {}s",
+                    self.open_timeout.as_secs()
+                ),
+            )
+        })??;
         let new_session_clone = new_session.clone();
         let raced = self.try_install(canonical.clone(), new_session);
 
@@ -384,13 +396,16 @@ impl SessionManager {
 
     /// Close a tracked r2 session for a binary path.
     ///
+    /// # Errors
+    ///
+    /// Returns an error if the binary path cannot be resolved to a tracked session key.
     pub fn close(&self, binary_path: impl AsRef<Path>) -> ToolResult<CloseOutcome> {
         let input = binary_path.as_ref().to_path_buf();
         let key = self.resolve_close_key(&input);
-        if let Some(session) = self.lookup(&key) {
-            if !session.shutdown() {
-                tracing::warn!("session shutdown channel closed for {}", key.display());
-            }
+        if let Some(session) = self.lookup(&key)
+            && !session.shutdown()
+        {
+            tracing::warn!("session shutdown channel closed for {}", key.display());
         }
         let removed = self.sessions.remove(&key);
         if removed.is_some() {

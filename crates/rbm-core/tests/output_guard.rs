@@ -82,7 +82,6 @@ fn guard_str_ttl_and_cleanup() {
 #[test]
 fn guard_str_r2_cmd_short() {
     let dir = tempfile::tempdir().unwrap();
-    let dir = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(dir.path().join("overflow")).unwrap();
     let guard = OutputGuard::new(dir.path().join("overflow"))
         .with_max_inline_chars(rbm_core::output_guard::MAX_INLINE_CHARS);

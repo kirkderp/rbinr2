@@ -89,11 +89,11 @@ pub async fn classes(session: &Session) -> ToolResult<Value> {
 /// Returns an error if the r2 command fails or the response is not valid JSON.
 pub async fn vtables(session: &Session, offset: usize, limit: usize) -> ToolResult<Value> {
     let raw = session.cmdj("avj").await?;
-    Ok(project_vtables(raw, offset, limit))
+    Ok(project_vtables(&raw, offset, limit))
 }
 
 #[must_use]
-pub fn project_vtables(raw: Value, offset: usize, limit: usize) -> Value {
+pub fn project_vtables(raw: &Value, offset: usize, limit: usize) -> Value {
     let rows = raw.as_array().cloned().unwrap_or_default();
     let total = rows.len();
     let limit = if limit == 0 { 50 } else { limit.min(500) };

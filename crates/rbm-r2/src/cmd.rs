@@ -15,7 +15,7 @@ pub async fn raw_cmd(session: &Session, command: &str) -> ToolResult<String> {
 
 /// Validate that a raw command is a single read-oriented r2 query.
 ///
-/// r2_cmd is an escape hatch for inspection, not a mutation API. Keeping it
+/// `r2_cmd` is an escape hatch for inspection, not a mutation API. Keeping it
 /// read-oriented avoids silent persistent-session poisoning across later tools.
 ///
 /// # Errors

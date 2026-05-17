@@ -1,14 +1,3 @@
-#![allow(
-    clippy::unused_self,
-    clippy::missing_errors_doc,
-    clippy::cast_possible_truncation,
-    clippy::cast_possible_wrap,
-    clippy::needless_pass_by_value,
-    clippy::if_not_else,
-    clippy::map_unwrap_or,
-    clippy::option_if_let_else
-)]
-
 // Manual MCP server for radare2-based binary analysis.
 use std::sync::Arc;
 
@@ -35,6 +24,63 @@ pub struct RbmServer {
     tools: Vec<Tool>,
 }
 
+fn t(name: &'static str, desc: &'static str, schema: serde_json::Value) -> Tool {
+    let json_obj = match schema {
+        serde_json::Value::Object(map) => map,
+        _ => rmcp::model::JsonObject::new(),
+    };
+    Tool::new(name, desc, std::sync::Arc::new(json_obj))
+}
+
+fn req(name: &str) -> serde_json::Value {
+    serde_json::json!({"type": "string", "description": name})
+}
+
+fn opt_s(desc: &str) -> serde_json::Value {
+    serde_json::json!({"type": "string", "description": desc})
+}
+
+fn enum_s(desc: &str, values: &[&str]) -> serde_json::Value {
+    serde_json::json!({"type": "string", "description": desc, "enum": values})
+}
+
+fn enum_s_default(desc: &str, values: &[&str], default: &str) -> serde_json::Value {
+    serde_json::json!({"type": "string", "description": desc, "enum": values, "default": default})
+}
+
+fn opt_u32(desc: &str, def: u32) -> serde_json::Value {
+    serde_json::json!({"type": "integer", "format": "uint32", "description": desc, "default": def})
+}
+
+fn opt_u32_capped(desc: &str, def: u32, max: u32) -> serde_json::Value {
+    serde_json::json!({"type": "integer", "format": "uint32", "description": desc, "default": def, "maximum": max})
+}
+
+fn schema(props: Vec<(&str, serde_json::Value)>, required: Vec<&str>) -> serde_json::Value {
+    let mut p = serde_json::Map::new();
+    for (k, v) in props {
+        p.insert(k.to_string(), v);
+    }
+    let required: Vec<serde_json::Value> =
+        required.into_iter().map(serde_json::Value::from).collect();
+    serde_json::json!({
+        "type": "object",
+        "properties": p,
+        "required": required,
+        "additionalProperties": false
+    })
+}
+
+macro_rules! try_call_tools {
+    ($server:expr, $name:expr, $params:expr, $($handler:ident),+ $(,)?) => {
+        $(
+            if let Some(result) = $server.$handler($name, $params).await? {
+                return Ok(result);
+            }
+        )+
+    };
+}
+
 impl RbmServer {
     #[must_use]
     pub fn new(config: ServerConfig) -> Self {
@@ -44,8 +90,7 @@ impl RbmServer {
         Self {
             config: Arc::new(config),
             r2: Arc::new(
-                SessionManager::with_open_timeout(r2_open_timeout)
-                    .with_tool_timeout(tool_timeout),
+                SessionManager::with_open_timeout(r2_open_timeout).with_tool_timeout(tool_timeout),
             ),
             output_guard,
             tools: Self::build_tools(),
@@ -63,6 +108,11 @@ impl RbmServer {
     }
 
     /// Serve the MCP server over stdio. Runs until stdin closes.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the stdio transport cannot start or the service exits
+    /// with a transport error.
     pub async fn serve_stdio(self) -> Result<(), String> {
         use rmcp::service::serve_server;
         use rmcp::transport::stdio;
@@ -74,45 +124,21 @@ impl RbmServer {
     }
 
     fn build_tools() -> Vec<Tool> {
-        fn t(name: &'static str, desc: &'static str, schema: serde_json::Value) -> Tool {
-            let json_obj = match schema {
-                serde_json::Value::Object(map) => map,
-                _ => rmcp::model::JsonObject::new(),
-            };
-            Tool::new(name, desc, std::sync::Arc::new(json_obj))
-        }
-        fn req(name: &str) -> serde_json::Value {
-            serde_json::json!({"type": "string", "description": name})
-        }
-        fn opt_s(desc: &str) -> serde_json::Value {
-            serde_json::json!({"type": "string", "description": desc})
-        }
-        fn enum_s(desc: &str, values: &[&str]) -> serde_json::Value {
-            serde_json::json!({"type": "string", "description": desc, "enum": values})
-        }
-        fn enum_s_default(desc: &str, values: &[&str], default: &str) -> serde_json::Value {
-            serde_json::json!({"type": "string", "description": desc, "enum": values, "default": default})
-        }
-        #[allow(dead_code)]
-        fn opt_u32(desc: &str, def: u32) -> serde_json::Value {
-            serde_json::json!({"type": "integer", "format": "uint32", "description": desc, "default": def})
-        }
-        fn opt_u32_capped(desc: &str, def: u32, max: u32) -> serde_json::Value {
-            serde_json::json!({"type": "integer", "format": "uint32", "description": desc, "default": def, "maximum": max})
-        }
-        fn schema(props: Vec<(&str, serde_json::Value)>, required: Vec<&str>) -> serde_json::Value {
-            let mut p = serde_json::Map::new();
-            for (k, v) in props {
-                p.insert(k.to_string(), v);
-            }
-            serde_json::json!({
-                "type": "object",
-                "properties": p,
-                "required": required,
-                "additionalProperties": false
-            })
-        }
+        let mut tools = Vec::new();
+        tools.extend(Self::tool_group_0());
+        tools.extend(Self::tool_group_1());
+        tools.extend(Self::tool_group_2());
+        tools.extend(Self::tool_group_3());
+        tools.extend(Self::tool_group_4());
+        tools.extend(Self::tool_group_5());
+        tools.extend(Self::tool_group_6());
+        tools.extend(Self::tool_group_7());
+        tools.extend(Self::tool_group_8());
+        tools.extend(Self::tool_group_9());
+        tools
+    }
 
+    fn tool_group_0() -> Vec<Tool> {
         vec![
             t(
                 "r2_open",
@@ -120,7 +146,10 @@ impl RbmServer {
                 schema(
                     vec![
                         ("binary_path", req("absolute path to the binary")),
-                        ("force_reload", json!({"type": "boolean", "description": "close and re-open if session already exists", "default": false})),
+                        (
+                            "force_reload",
+                            json!({"type": "boolean", "description": "close and re-open if session already exists", "default": false}),
+                        ),
                     ],
                     vec!["binary_path"],
                 ),
@@ -178,6 +207,11 @@ impl RbmServer {
                     vec!["binary_path"],
                 ),
             ),
+        ]
+    }
+
+    fn tool_group_1() -> Vec<Tool> {
+        vec![
             t(
                 "r2_classes",
                 "List classes or inspect one class. Without classname, returns class list with optional glob/substring filter. With classname, format=json (default) returns sorted methods/fields; format=text returns raw ic output.",
@@ -237,7 +271,10 @@ impl RbmServer {
                         ),
                         ("type_name", opt_s("type name for c/view/format/cast modes")),
                         ("addr", opt_s("address, symbol, or r2 flag for cast mode")),
-                        ("filter", opt_s("optional glob/substring filter for JSON list modes")),
+                        (
+                            "filter",
+                            opt_s("optional glob/substring filter for JSON list modes"),
+                        ),
                         ("offset", opt_u32("result offset", 0)),
                         ("limit", opt_u32("max results", 50)),
                     ],
@@ -252,6 +289,11 @@ impl RbmServer {
                     vec!["binary_path"],
                 ),
             ),
+        ]
+    }
+
+    fn tool_group_2() -> Vec<Tool> {
+        vec![
             t(
                 "r2_plugins",
                 "List r2 capabilities/plugins. mode can be asm, analysis, bin, hash, or decompile.",
@@ -307,6 +349,11 @@ impl RbmServer {
                     vec!["binary_path", "addr"],
                 ),
             ),
+        ]
+    }
+
+    fn tool_group_3() -> Vec<Tool> {
+        vec![
             t(
                 "r2_flags",
                 "Read r2 flags, demangled/real flag names, or flagspaces. Supports glob/substring filter and pagination for flag rows.",
@@ -365,6 +412,11 @@ impl RbmServer {
                     vec!["binary_path", "addr"],
                 ),
             ),
+        ]
+    }
+
+    fn tool_group_4() -> Vec<Tool> {
+        vec![
             t(
                 "r2_disassemble",
                 "Disassemble a bounded instruction window from any address, symbol, or r2 flag. Set function=true for function-bounded disassembly when starting from a function symbol; otherwise count may walk into adjacent data. format=json (default) returns structured rows; format=text returns raw text. Default count=32.",
@@ -442,6 +494,11 @@ impl RbmServer {
                     vec!["binary_path", "addr"],
                 ),
             ),
+        ]
+    }
+
+    fn tool_group_5() -> Vec<Tool> {
+        vec![
             t(
                 "r2_find",
                 "Unified search across functions/strings/imports/bytes. Functions accept glob (*, ?) or substring; strings/imports use substring; bytes use a hex pattern. Default limit 50.",
@@ -530,6 +587,11 @@ impl RbmServer {
                     vec!["binary_path", "addr"],
                 ),
             ),
+        ]
+    }
+
+    fn tool_group_6() -> Vec<Tool> {
+        vec![
             t(
                 "r2_function_view",
                 "Mode-driven r2 function view. mode can be analyze, info, signature, vars, profile, strings, constants, callees, refs, or cfg. Default analyze returns compact function triage.",
@@ -626,6 +688,11 @@ impl RbmServer {
                     vec!["binary_path", "addr"],
                 ),
             ),
+        ]
+    }
+
+    fn tool_group_7() -> Vec<Tool> {
+        vec![
             t(
                 "r2_global_xrefs",
                 "Return a paginated global xref inventory from axlj.",
@@ -680,6 +747,11 @@ impl RbmServer {
                     vec!["binary_path", "command"],
                 ),
             ),
+        ]
+    }
+
+    fn tool_group_8() -> Vec<Tool> {
+        vec![
             t(
                 "r2_trace_data_flow",
                 "BFS over xrefs (axfj/axtj) from or to an address. 'backward' answers 'who reaches this string/global/import?'; 'forward' answers 'where does data flow next?'. max_depth clamped to 1-15.",
@@ -763,6 +835,11 @@ impl RbmServer {
                     vec!["binary_path", "table_addr", "entry_count"],
                 ),
             ),
+        ]
+    }
+
+    fn tool_group_9() -> Vec<Tool> {
+        vec![
             t(
                 "r2_path_digest",
                 "Return a cheap radare2-backed macro path digest over a function or raw address range.",
@@ -836,49 +913,41 @@ impl RbmServer {
         ]
     }
 
-    fn s(&self, v: &serde_json::Map<String, serde_json::Value>, key: &str) -> String {
+    fn s(v: &serde_json::Map<String, serde_json::Value>, key: &str) -> String {
         v.get(key)
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string()
     }
 
-    fn opt_s<'a>(
-        &self,
-        v: &'a serde_json::Map<String, serde_json::Value>,
-        key: &str,
-    ) -> Option<&'a str> {
+    fn opt_s<'a>(v: &'a serde_json::Map<String, serde_json::Value>, key: &str) -> Option<&'a str> {
         v.get(key).and_then(|s| {
             let s = s.as_str()?;
             if s.is_empty() { None } else { Some(s) }
         })
     }
 
-    fn opt_u64(&self, v: &serde_json::Map<String, serde_json::Value>, key: &str) -> Option<u64> {
+    fn opt_u64(v: &serde_json::Map<String, serde_json::Value>, key: &str) -> Option<u64> {
         v.get(key).and_then(serde_json::Value::as_u64)
     }
 
-    fn opt_u32(&self, v: &serde_json::Map<String, serde_json::Value>, key: &str) -> Option<u32> {
+    fn opt_u32(v: &serde_json::Map<String, serde_json::Value>, key: &str) -> Option<u32> {
         v.get(key)
             .and_then(serde_json::Value::as_u64)
-            .map(|x| x as u32)
+            .and_then(|x| u32::try_from(x).ok())
     }
 
-    fn opt_bool(&self, v: &serde_json::Map<String, serde_json::Value>, key: &str) -> Option<bool> {
+    fn opt_bool(v: &serde_json::Map<String, serde_json::Value>, key: &str) -> Option<bool> {
         v.get(key).and_then(serde_json::Value::as_bool)
     }
 
-    fn opt_usize(
-        &self,
-        v: &serde_json::Map<String, serde_json::Value>,
-        key: &str,
-    ) -> Option<usize> {
+    fn opt_usize(v: &serde_json::Map<String, serde_json::Value>, key: &str) -> Option<usize> {
         v.get(key)
             .and_then(serde_json::Value::as_u64)
-            .map(|x| x as usize)
+            .and_then(|x| usize::try_from(x).ok())
     }
 
-    fn ok_json(&self, value: impl serde::Serialize) -> Result<CallToolResult, ErrorData> {
+    fn ok_json(value: impl serde::Serialize) -> Result<CallToolResult, ErrorData> {
         let text = serde_json::to_string(&value).map_err(|e| err(e.to_string()))?;
         Ok(CallToolResult::success(vec![Content::text(text)]))
     }
@@ -896,7 +965,7 @@ impl RbmServer {
             .map_err(|e| err(e.to_string()))?;
         match guarded {
             GuardedOutput::Inline(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
-            GuardedOutput::Overflow(summary) => self.ok_json(summary),
+            GuardedOutput::Overflow(summary) => Self::ok_json(summary),
         }
     }
 
@@ -958,7 +1027,6 @@ impl ServerHandler for RbmServer {
         })
     }
 
-    #[allow(clippy::too_many_lines)]
     async fn call_tool(
         &self,
         request: CallToolRequestParams,
@@ -966,11 +1034,85 @@ impl ServerHandler for RbmServer {
     ) -> Result<CallToolResult, ErrorData> {
         let name = request.name.as_ref();
         let params = request.arguments.unwrap_or_default();
-
         match name {
+            "r2_close" => {
+                let outcome = self
+                    .r2
+                    .close(Self::s(&params, "binary_path"))
+                    .map_err(|e| err(e.to_string()))?;
+                return Self::ok_json(outcome);
+            }
+            "r2_sessions" => {
+                let paths = self.r2.list();
+                return Self::ok_json(serde_json::json!({
+                    "schema": "rbm.r2.sessions.v0",
+                    "count": paths.len(),
+                    "sessions": paths,
+                }));
+            }
+            _ => {}
+        }
+        try_call_tools!(
+            self,
+            name,
+            &params,
+            call_tool_0,
+            call_tool_3,
+            call_tool_4,
+            call_tool_5,
+            call_tool_6,
+            call_tool_7,
+            call_tool_8,
+            call_tool_9,
+            call_tool_10,
+            call_tool_11,
+            call_tool_12,
+            call_tool_13,
+            call_tool_14,
+            call_tool_15,
+            call_tool_16,
+            call_tool_17,
+            call_tool_18,
+            call_tool_19,
+            call_tool_20,
+            call_tool_21,
+            call_tool_22,
+            call_tool_23,
+            call_tool_24,
+            call_tool_25,
+            call_tool_26,
+            call_tool_27,
+            call_tool_28,
+            call_tool_29,
+            call_tool_30,
+            call_tool_31,
+            call_tool_32,
+            call_tool_33,
+            call_tool_34,
+            call_tool_35,
+            call_tool_36,
+            call_tool_37,
+            call_tool_38,
+        );
+        Err(ErrorData::new(
+            rmcp::model::ErrorCode::INVALID_PARAMS,
+            format!("unknown tool: {name}"),
+            None,
+        ))
+    }
+}
+
+impl RbmServer {
+    async fn call_tool_0(
+        &self,
+        name: &str,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Option<CallToolResult>, ErrorData> {
+        let _ = params;
+        let result = match name {
             "r2_open" => {
-                let binary_path = self.s(&params, "binary_path");
-                let force_reload = self.opt_bool(&params, "force_reload").unwrap_or(false);
+                let binary_path = Self::s(params, "binary_path");
+                let force_reload = Self::opt_bool(params, "force_reload").unwrap_or(false);
                 if force_reload {
                     let _ = self.r2.close(&binary_path);
                 }
@@ -979,154 +1121,42 @@ impl ServerHandler for RbmServer {
                     .open(&binary_path)
                     .await
                     .map_err(|e| err(e.to_string()))?;
-                self.ok_json(outcome)
+                Self::ok_json(outcome)
             }
 
-            "r2_close" => {
-                let outcome = self
-                    .r2
-                    .close(self.s(&params, "binary_path"))
-                    .map_err(|e| err(e.to_string()))?;
-                self.ok_json(outcome)
-            }
+            _ => return Ok(None),
+        };
+        result.map(Some)
+    }
 
-            "r2_sessions" => {
-                let paths = self.r2.list();
-                self.ok_json(serde_json::json!({
-                    "schema": "rbm.r2.sessions.v0",
-                    "count": paths.len(),
-                    "sessions": paths,
-                }))
-            }
+    async fn call_tool_3(
+        &self,
+        name: &str,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Option<CallToolResult>, ErrorData> {
+        let _ = params;
+        let result = match name {
+            "r2_metadata" => self.r2_metadata(params).await,
 
-            "r2_metadata" => {
-                let binary_path = self.s(&params, "binary_path");
-                let mode = self.s(&params, "mode");
-                let mode = normalize_r2_metadata_mode(&mode)?;
-                let session = self.session_for(&binary_path).await?;
+            _ => return Ok(None),
+        };
+        result.map(Some)
+    }
 
-                let mut result = match mode {
-                    "info" => rbm_r2::meta::info(&session)
-                        .await
-                        .map_err(|e| err(e.to_string()))?,
-                    "headers" => serde_json::json!(
-                        rbm_r2::meta::rich_header(&session)
-                            .await
-                            .map_err(|e| err(e.to_string()))?
-                    ),
-                    "version_info" => serde_json::json!(
-                        rbm_r2::meta::version_info(&session)
-                            .await
-                            .map_err(|e| err(e.to_string()))?
-                    ),
-                    "entry_points" => rbm_r2::meta::entry_points(&session)
-                        .await
-                        .map_err(|e| err(e.to_string()))?,
-                    "sections" => rbm_r2::format::sections(&session)
-                        .await
-                        .map_err(|e| err(e.to_string()))?,
-                    "relocations" => rbm_r2::format::relocations(&session)
-                        .await
-                        .map_err(|e| err(e.to_string()))?,
-                    "resources" => rbm_r2::format::resources(&session)
-                        .await
-                        .map_err(|e| err(e.to_string()))?,
-                    "libraries" => serde_json::json!(
-                        rbm_r2::format::libraries(&session)
-                            .await
-                            .map_err(|e| err(e.to_string()))?
-                    ),
-                    "imports" => {
-                        let value = rbm_r2::symbols::imports(&session)
-                            .await
-                            .map_err(|e| err(e.to_string()))?;
-                        apply_name_filter(value, self.opt_s(&params, "filter"))?
-                    }
-                    "exports" => {
-                        let value = rbm_r2::symbols::exports(&session)
-                            .await
-                            .map_err(|e| err(e.to_string()))?;
-                        apply_name_filter(value, self.opt_s(&params, "filter"))?
-                    }
-                    "symbols" => {
-                        let value = rbm_r2::symbols::symbols(&session)
-                            .await
-                            .map_err(|e| err(e.to_string()))?;
-                        apply_name_filter(value, self.opt_s(&params, "filter"))?
-                    }
-                    "strings" => {
-                        let min_length = self.opt_usize(&params, "min_length").unwrap_or(5);
-                        let all_sections = self.opt_bool(&params, "all_sections").unwrap_or(true);
-                        let value = if all_sections {
-                            rbm_r2::symbols::strings_all(&session, min_length).await
-                        } else {
-                            rbm_r2::symbols::strings(&session, min_length).await
-                        }
-                        .map_err(|e| err(e.to_string()))?;
-                        if let Some(pattern) =
-                            self.opt_s(&params, "filter").filter(|s| !s.is_empty())
-                        {
-                            rbm_r2::symbols::filter_by_string_content(value, pattern)
-                                .map_err(|e| err(e.to_string()))?
-                        } else {
-                            value
-                        }
-                    }
-                    "functions" => {
-                        let value = rbm_r2::disasm::functions(&session)
-                            .await
-                            .map_err(|e| err(e.to_string()))?;
-                        apply_name_filter(value, self.opt_s(&params, "filter"))?
-                    }
-                    _ => unreachable!("mode is normalized before dispatch"),
-                };
-
-                if matches!(
-                    mode,
-                    "entry_points"
-                        | "sections"
-                        | "relocations"
-                        | "resources"
-                        | "libraries"
-                        | "imports"
-                        | "exports"
-                        | "symbols"
-                        | "strings"
-                        | "functions"
-                ) {
-                    let offset = self.opt_usize(&params, "offset").unwrap_or(0);
-                    let limit = self.opt_usize(&params, "limit").unwrap_or(0);
-                    let (paged, total_matched, returned, truncated) =
-                        paginate_with_counts(result, offset, limit);
-                    result = paged;
-                    return self.ok_json(serde_json::json!({
-                        "schema": "rbm.r2.metadata.v0",
-                        "binary_path": binary_path,
-                        "mode": mode,
-                        "offset": offset,
-                        "limit": limit,
-                        "total_matched": total_matched,
-                        "returned": returned,
-                        "truncated": truncated,
-                        "result": result,
-                    }));
-                }
-
-                self.ok_json(serde_json::json!({
-                    "schema": "rbm.r2.metadata.v0",
-                    "binary_path": binary_path,
-                    "mode": mode,
-                    "result": result,
-                }))
-            }
-
+    async fn call_tool_4(
+        &self,
+        name: &str,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Option<CallToolResult>, ErrorData> {
+        let _ = params;
+        let result = match name {
             "r2_classes" => {
-                let binary_path = self.s(&params, "binary_path");
+                let binary_path = Self::s(params, "binary_path");
                 let session = self.session_for(&binary_path).await?;
-                let classname = self.opt_s(&params, "classname").filter(|s| !s.is_empty());
+                let classname = Self::opt_s(params, "classname").filter(|s| !s.is_empty());
 
                 let result = if let Some(name) = classname {
-                    let format = self.s(&params, "format").trim().to_ascii_lowercase();
+                    let format = Self::s(params, "format").trim().to_ascii_lowercase();
                     match format.as_str() {
                         "" | "json" | "structured" => {
                             let value = rbm_r2::format::class_methods_json(&session, name)
@@ -1147,7 +1177,7 @@ impl ServerHandler for RbmServer {
                     let mut value = rbm_r2::format::classes(&session)
                         .await
                         .map_err(|e| err(e.to_string()))?;
-                    if let Some(pattern) = self.opt_s(&params, "filter").filter(|s| !s.is_empty()) {
+                    if let Some(pattern) = Self::opt_s(params, "filter").filter(|s| !s.is_empty()) {
                         value = rbm_r2::format::filter_classes(value, pattern)
                             .map_err(|e| err(e.to_string()))?;
                     }
@@ -1157,68 +1187,128 @@ impl ServerHandler for RbmServer {
                 Ok(CallToolResult::success(vec![Content::text(result)]))
             }
 
+            _ => return Ok(None),
+        };
+        result.map(Some)
+    }
+
+    async fn call_tool_5(
+        &self,
+        name: &str,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Option<CallToolResult>, ErrorData> {
+        let _ = params;
+        let result = match name {
             "r2_vtables" => {
-                let session = self.session_for(&self.s(&params, "binary_path")).await?;
-                let offset = self.opt_usize(&params, "offset").unwrap_or(0);
-                let limit = self.opt_usize(&params, "limit").unwrap_or(50);
+                let session = self.session_for(&Self::s(params, "binary_path")).await?;
+                let offset = Self::opt_usize(params, "offset").unwrap_or(0);
+                let limit = Self::opt_usize(params, "limit").unwrap_or(50);
                 let result = rbm_r2::format::vtables(&session, offset, limit)
                     .await
                     .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
+                Self::ok_json(result)
             }
 
+            _ => return Ok(None),
+        };
+        result.map(Some)
+    }
+
+    async fn call_tool_6(
+        &self,
+        name: &str,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Option<CallToolResult>, ErrorData> {
+        let _ = params;
+        let result = match name {
             "r2_types" => {
-                let session = self.session_for(&self.s(&params, "binary_path")).await?;
-                let offset = self.opt_usize(&params, "offset").unwrap_or(0);
-                let limit = self.opt_usize(&params, "limit").unwrap_or(50);
+                let session = self.session_for(&Self::s(params, "binary_path")).await?;
+                let offset = Self::opt_usize(params, "offset").unwrap_or(0);
+                let limit = Self::opt_usize(params, "limit").unwrap_or(50);
                 let result = rbm_r2::types::types_view(
                     &session,
-                    self.opt_s(&params, "mode").unwrap_or("list"),
-                    self.opt_s(&params, "type_name"),
-                    self.opt_s(&params, "addr"),
+                    Self::opt_s(params, "mode").unwrap_or("list"),
+                    Self::opt_s(params, "type_name"),
+                    Self::opt_s(params, "addr"),
                     offset,
                     limit,
-                    self.opt_s(&params, "filter"),
+                    Self::opt_s(params, "filter"),
                 )
                 .await
                 .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
+                Self::ok_json(result)
             }
 
+            _ => return Ok(None),
+        };
+        result.map(Some)
+    }
+
+    async fn call_tool_7(
+        &self,
+        name: &str,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Option<CallToolResult>, ErrorData> {
+        let _ = params;
+        let result = match name {
             "r2_imports_grouped" => {
-                let binary_path = self.s(&params, "binary_path");
+                let binary_path = Self::s(params, "binary_path");
                 let session = self.session_for(&binary_path).await?;
                 let result = rbm_r2::symbols::imports_grouped(&session)
                     .await
                     .map_err(|e| err(e.to_string()))?;
-                self.ok_json(serde_json::json!({
+                Self::ok_json(serde_json::json!({
                     "schema": "rbm.r2.imports_grouped.v0",
                     "binary_path": binary_path,
                     "result": result,
                 }))
             }
 
+            _ => return Ok(None),
+        };
+        result.map(Some)
+    }
+
+    async fn call_tool_8(
+        &self,
+        name: &str,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Option<CallToolResult>, ErrorData> {
+        let _ = params;
+        let result = match name {
             "r2_plugins" => {
-                let session = self.session_for(&self.s(&params, "binary_path")).await?;
+                let session = self.session_for(&Self::s(params, "binary_path")).await?;
                 let result = rbm_r2::navigation::plugins(
                     &session,
-                    self.opt_s(&params, "mode").unwrap_or("asm"),
+                    Self::opt_s(params, "mode").unwrap_or("asm"),
                 )
                 .await
                 .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
+                Self::ok_json(result)
             }
 
+            _ => return Ok(None),
+        };
+        result.map(Some)
+    }
+
+    async fn call_tool_9(
+        &self,
+        name: &str,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Option<CallToolResult>, ErrorData> {
+        let _ = params;
+        let result = match name {
             "r2_get_bytes" => {
-                let binary_path = self.s(&params, "binary_path");
-                let addr = self.s(&params, "addr");
-                let count = self.opt_u64(&params, "count").unwrap_or(64);
+                let binary_path = Self::s(params, "binary_path");
+                let addr = Self::s(params, "addr");
+                let count = Self::opt_u64(params, "count").unwrap_or(64);
                 let session = self.session_for(&binary_path).await?;
                 let hex = rbm_r2::disasm::get_bytes(&session, &addr, count)
                     .await
                     .map_err(|e| err(e.to_string()))?;
                 let compact_hex: String = hex.chars().filter(|c| !c.is_whitespace()).collect();
-                self.ok_json(serde_json::json!({
+                Self::ok_json(serde_json::json!({
                     "schema": "rbm.r2.get_bytes.v0",
                     "binary_path": binary_path,
                     "addr": addr,
@@ -1228,12 +1318,24 @@ impl ServerHandler for RbmServer {
                 }))
             }
 
+            _ => return Ok(None),
+        };
+        result.map(Some)
+    }
+
+    async fn call_tool_10(
+        &self,
+        name: &str,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Option<CallToolResult>, ErrorData> {
+        let _ = params;
+        let result = match name {
             "r2_extract_bytes" => {
-                let binary_path = self.s(&params, "binary_path");
-                let addr = self.s(&params, "addr");
-                let count = self.opt_u64(&params, "count").unwrap_or(64);
-                let out_path = self.opt_s(&params, "out_path").map(String::from);
-                let overwrite = self.opt_bool(&params, "overwrite").unwrap_or(true);
+                let binary_path = Self::s(params, "binary_path");
+                let addr = Self::s(params, "addr");
+                let count = Self::opt_u64(params, "count").unwrap_or(64);
+                let out_path = Self::opt_s(params, "out_path").map(String::from);
+                let overwrite = Self::opt_bool(params, "overwrite").unwrap_or(true);
                 let result_binary_path = binary_path.clone();
 
                 let session = self.session_for(&binary_path).await?;
@@ -1273,60 +1375,128 @@ impl ServerHandler for RbmServer {
                 })
                 .map_err(|e| err(e.to_string()))?;
 
-                self.ok_json(result)
+                Self::ok_json(result)
             }
 
+            _ => return Ok(None),
+        };
+        result.map(Some)
+    }
+
+    async fn call_tool_11(
+        &self,
+        name: &str,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Option<CallToolResult>, ErrorData> {
+        let _ = params;
+        let result = match name {
             "r2_lookup_address" => self
-                .with_session_json(&self.s(&params, "binary_path"), |session| async move {
-                    rbm_r2::disasm::lookup_address(&session, &self.s(&params, "addr")).await
+                .with_session_json(&Self::s(params, "binary_path"), |session| async move {
+                    rbm_r2::disasm::lookup_address(&session, &Self::s(params, "addr")).await
                 })
                 .await
                 .map(|s| CallToolResult::success(vec![Content::text(s)])),
+            _ => return Ok(None),
+        };
+        result.map(Some)
+    }
 
+    async fn call_tool_12(
+        &self,
+        name: &str,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Option<CallToolResult>, ErrorData> {
+        let _ = params;
+        let result = match name {
             "r2_flags" => {
-                let session = self.session_for(&self.s(&params, "binary_path")).await?;
-                let offset = self.opt_usize(&params, "offset").unwrap_or(0);
-                let limit = self.opt_usize(&params, "limit").unwrap_or(50);
+                let session = self.session_for(&Self::s(params, "binary_path")).await?;
+                let offset = Self::opt_usize(params, "offset").unwrap_or(0);
+                let limit = Self::opt_usize(params, "limit").unwrap_or(50);
                 let result = rbm_r2::navigation::flags(
                     &session,
-                    self.opt_s(&params, "mode").unwrap_or("flags"),
+                    Self::opt_s(params, "mode").unwrap_or("flags"),
                     offset,
                     limit,
-                    self.opt_s(&params, "filter"),
+                    Self::opt_s(params, "filter"),
                 )
                 .await
                 .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
+                Self::ok_json(result)
             }
 
+            _ => return Ok(None),
+        };
+        result.map(Some)
+    }
+
+    async fn call_tool_13(
+        &self,
+        name: &str,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Option<CallToolResult>, ErrorData> {
+        let _ = params;
+        let result = match name {
             "r2_address_info" => self
-                .with_session_json(&self.s(&params, "binary_path"), |session| async move {
-                    rbm_r2::disasm::address_info(&session, &self.s(&params, "addr")).await
+                .with_session_json(&Self::s(params, "binary_path"), |session| async move {
+                    rbm_r2::disasm::address_info(&session, &Self::s(params, "addr")).await
                 })
                 .await
                 .map(|s| CallToolResult::success(vec![Content::text(s)])),
+            _ => return Ok(None),
+        };
+        result.map(Some)
+    }
 
+    async fn call_tool_14(
+        &self,
+        name: &str,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Option<CallToolResult>, ErrorData> {
+        let _ = params;
+        let result = match name {
             "r2_calculate" => self
-                .with_session_json(&self.s(&params, "binary_path"), |session| async move {
-                    rbm_r2::disasm::calculate(&session, &self.s(&params, "expression")).await
+                .with_session_json(&Self::s(params, "binary_path"), |session| async move {
+                    rbm_r2::disasm::calculate(&session, &Self::s(params, "expression")).await
                 })
                 .await
                 .map(|s| CallToolResult::success(vec![Content::text(s)])),
+            _ => return Ok(None),
+        };
+        result.map(Some)
+    }
 
+    async fn call_tool_15(
+        &self,
+        name: &str,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Option<CallToolResult>, ErrorData> {
+        let _ = params;
+        let result = match name {
             "r2_opcodes" => self
-                .with_session_json(&self.s(&params, "binary_path"), |session| async move {
-                    let count = self.opt_u32(&params, "count").unwrap_or(8);
-                    rbm_r2::disasm::opcodes(&session, &self.s(&params, "addr"), count).await
+                .with_session_json(&Self::s(params, "binary_path"), |session| async move {
+                    let count = Self::opt_u32(params, "count").unwrap_or(8);
+                    rbm_r2::disasm::opcodes(&session, &Self::s(params, "addr"), count).await
                 })
                 .await
                 .map(|s| CallToolResult::success(vec![Content::text(s)])),
+            _ => return Ok(None),
+        };
+        result.map(Some)
+    }
 
+    async fn call_tool_16(
+        &self,
+        name: &str,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Option<CallToolResult>, ErrorData> {
+        let _ = params;
+        let result = match name {
             "r2_disassemble" => {
-                let binary_path = self.s(&params, "binary_path");
-                let addr = self.s(&params, "addr");
-                let count = self.opt_u64(&params, "count").unwrap_or(32);
-                let function = self.opt_bool(&params, "function").unwrap_or(false);
-                let format = self.s(&params, "format").trim().to_ascii_lowercase();
+                let binary_path = Self::s(params, "binary_path");
+                let addr = Self::s(params, "addr");
+                let count = Self::opt_u64(params, "count").unwrap_or(32);
+                let function = Self::opt_bool(params, "function").unwrap_or(false);
+                let format = Self::s(params, "format").trim().to_ascii_lowercase();
 
                 match format.as_str() {
                     "" | "json" | "structured" => self
@@ -1355,81 +1525,148 @@ impl ServerHandler for RbmServer {
                 }
             }
 
+            _ => return Ok(None),
+        };
+        result.map(Some)
+    }
+
+    async fn call_tool_17(
+        &self,
+        name: &str,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Option<CallToolResult>, ErrorData> {
+        let _ = params;
+        let result = match name {
             "r2_block_hash" => self
-                .with_session_json(&self.s(&params, "binary_path"), |session| async move {
-                    let count = self.opt_u64(&params, "count").unwrap_or(64);
+                .with_session_json(&Self::s(params, "binary_path"), |session| async move {
+                    let count = Self::opt_u64(params, "count").unwrap_or(64);
                     rbm_r2::disasm::block_hash(
                         &session,
-                        &self.s(&params, "addr"),
+                        &Self::s(params, "addr"),
                         count,
-                        self.opt_s(&params, "algorithm").unwrap_or("sha256"),
+                        Self::opt_s(params, "algorithm").unwrap_or("sha256"),
                     )
                     .await
                 })
                 .await
                 .map(|s| CallToolResult::success(vec![Content::text(s)])),
+            _ => return Ok(None),
+        };
+        result.map(Some)
+    }
 
+    async fn call_tool_18(
+        &self,
+        name: &str,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Option<CallToolResult>, ErrorData> {
+        let _ = params;
+        let result = match name {
             "r2_pointer_scan" => self
-                .with_session_json(&self.s(&params, "binary_path"), |session| async move {
-                    let count = self.opt_u64(&params, "count").unwrap_or(64);
-                    rbm_r2::navigation::pointer_scan(&session, &self.s(&params, "addr"), count)
+                .with_session_json(&Self::s(params, "binary_path"), |session| async move {
+                    let count = Self::opt_u64(params, "count").unwrap_or(64);
+                    rbm_r2::navigation::pointer_scan(&session, &Self::s(params, "addr"), count)
                         .await
                 })
                 .await
                 .map(|s| CallToolResult::success(vec![Content::text(s)])),
+            _ => return Ok(None),
+        };
+        result.map(Some)
+    }
 
+    async fn call_tool_19(
+        &self,
+        name: &str,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Option<CallToolResult>, ErrorData> {
+        let _ = params;
+        let result = match name {
             "r2_string_at" => self
-                .with_session_json(&self.s(&params, "binary_path"), |session| async move {
+                .with_session_json(&Self::s(params, "binary_path"), |session| async move {
                     rbm_r2::navigation::string_at(
                         &session,
-                        &self.s(&params, "addr"),
-                        self.opt_s(&params, "mode").unwrap_or("auto"),
+                        &Self::s(params, "addr"),
+                        Self::opt_s(params, "mode").unwrap_or("auto"),
                     )
                     .await
                 })
                 .await
                 .map(|s| CallToolResult::success(vec![Content::text(s)])),
+            _ => return Ok(None),
+        };
+        result.map(Some)
+    }
 
+    async fn call_tool_20(
+        &self,
+        name: &str,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Option<CallToolResult>, ErrorData> {
+        let _ = params;
+        let result = match name {
             "r2_find" => {
-                let binary_path = self.s(&params, "binary_path");
+                let binary_path = Self::s(params, "binary_path");
                 let session = self.session_for(&binary_path).await?;
                 let mut result = rbm_r2::search::find(
                     &session,
-                    &self.s(&params, "search_type"),
-                    &self.s(&params, "pattern"),
-                    self.opt_usize(&params, "limit").unwrap_or(50),
+                    &Self::s(params, "search_type"),
+                    &Self::s(params, "pattern"),
+                    Self::opt_usize(params, "limit").unwrap_or(50),
                 )
                 .await
                 .map_err(|e| err(e.to_string()))?;
                 if let Some(result) = result.as_object_mut() {
                     result.insert("binary_path".to_string(), serde_json::json!(binary_path));
                 }
-                self.ok_json(result)
+                Self::ok_json(result)
             }
 
+            _ => return Ok(None),
+        };
+        result.map(Some)
+    }
+
+    async fn call_tool_21(
+        &self,
+        name: &str,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Option<CallToolResult>, ErrorData> {
+        let _ = params;
+        let result = match name {
             "r2_semantic_search" => self
-                .with_session_json(&self.s(&params, "binary_path"), |session| async move {
-                    let limit = self.opt_usize(&params, "limit").unwrap_or(50);
+                .with_session_json(&Self::s(params, "binary_path"), |session| async move {
+                    let limit = Self::opt_usize(params, "limit").unwrap_or(50);
                     rbm_r2::navigation::semantic_search(
                         &session,
-                        self.opt_s(&params, "mode").unwrap_or("opcode_type"),
-                        &self.s(&params, "pattern"),
+                        Self::opt_s(params, "mode").unwrap_or("opcode_type"),
+                        &Self::s(params, "pattern"),
                         limit,
                     )
                     .await
                 })
                 .await
                 .map(|s| CallToolResult::success(vec![Content::text(s)])),
+            _ => return Ok(None),
+        };
+        result.map(Some)
+    }
 
+    async fn call_tool_22(
+        &self,
+        name: &str,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Option<CallToolResult>, ErrorData> {
+        let _ = params;
+        let result = match name {
             "r2_find_xrefs" => {
                 // Inline a simple find_xrefs implementation since the original
                 // used a service layer not available here
-                let binary_path = self.s(&params, "binary_path");
-                let search_type = self.s(&params, "search_type");
-                let pattern = self.s(&params, "pattern");
-                let limit = self.opt_usize(&params, "limit").unwrap_or(20).min(50);
-                let max_xrefs = self
-                    .opt_usize(&params, "max_xrefs_per_hit")
+                let binary_path = Self::s(params, "binary_path");
+                let search_type = Self::s(params, "search_type");
+                let pattern = Self::s(params, "pattern");
+                let limit = Self::opt_usize(params, "limit").unwrap_or(20).min(50);
+                let max_xrefs = Self::opt_usize(params, "max_xrefs_per_hit")
                     .unwrap_or(12)
                     .min(50);
 
@@ -1454,11 +1691,10 @@ impl ServerHandler for RbmServer {
                     };
 
                     let xrefs_count = xrefs_val.as_array().map_or(0, std::vec::Vec::len);
-                    let xrefs_trimmed = if let Some(arr) = xrefs_val.as_array() {
-                        Value::Array(arr.iter().take(max_xrefs).cloned().collect())
-                    } else {
-                        xrefs_val
-                    };
+                    let xrefs_trimmed = xrefs_val.as_array().map_or_else(
+                        || xrefs_val.clone(),
+                        |arr| Value::Array(arr.iter().take(max_xrefs).cloned().collect()),
+                    );
 
                     hits.push(serde_json::json!({
                         "hit": item,
@@ -1468,7 +1704,7 @@ impl ServerHandler for RbmServer {
                     }));
                 }
 
-                self.ok_json(serde_json::json!({
+                Self::ok_json(serde_json::json!({
                     "schema": "rbm.r2.find_xrefs.v0",
                     "binary_path": binary_path,
                     "search_type": search_type,
@@ -1478,10 +1714,22 @@ impl ServerHandler for RbmServer {
                 }))
             }
 
+            _ => return Ok(None),
+        };
+        result.map(Some)
+    }
+
+    async fn call_tool_23(
+        &self,
+        name: &str,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Option<CallToolResult>, ErrorData> {
+        let _ = params;
+        let result = match name {
             "r2_decompile" => {
-                let binary_path = self.s(&params, "binary_path");
-                let addr = self.s(&params, "addr");
-                let mode = self.s(&params, "mode").trim().to_ascii_lowercase();
+                let binary_path = Self::s(params, "binary_path");
+                let addr = Self::s(params, "addr");
+                let mode = Self::s(params, "mode").trim().to_ascii_lowercase();
 
                 match mode.as_str() {
                     "" | "code" | "pseudocode" | "body" => self
@@ -1502,11 +1750,23 @@ impl ServerHandler for RbmServer {
                 }
             }
 
+            _ => return Ok(None),
+        };
+        result.map(Some)
+    }
+
+    async fn call_tool_24(
+        &self,
+        name: &str,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Option<CallToolResult>, ErrorData> {
+        let _ = params;
+        let result = match name {
             "r2_function_view" => {
-                let binary_path = self.s(&params, "binary_path");
-                let addr = self.s(&params, "addr");
-                let mode = self.s(&params, "mode");
-                let include_asm = self.opt_bool(&params, "include_asm").unwrap_or(false);
+                let binary_path = Self::s(params, "binary_path");
+                let addr = Self::s(params, "addr");
+                let mode = Self::s(params, "mode");
+                let include_asm = Self::opt_bool(params, "include_asm").unwrap_or(false);
                 let mode = normalize_r2_function_view_mode(&mode)?;
 
                 let session = self.session_for(&binary_path).await?;
@@ -1550,7 +1810,7 @@ impl ServerHandler for RbmServer {
                     _ => unreachable!("mode is normalized before dispatch"),
                 };
 
-                self.ok_json(serde_json::json!({
+                Self::ok_json(serde_json::json!({
                     "schema": "rbm.r2.function_view.v0",
                     "binary_path": binary_path,
                     "addr": addr,
@@ -1559,20 +1819,43 @@ impl ServerHandler for RbmServer {
                 }))
             }
 
+            _ => return Ok(None),
+        };
+        result.map(Some)
+    }
+
+    async fn call_tool_25(
+        &self,
+        name: &str,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Option<CallToolResult>, ErrorData> {
+        let _ = params;
+        let result = match name {
             "r2_graph" => {
-                let session = self.session_for(&self.s(&params, "binary_path")).await?;
-                let kind = self.opt_s(&params, "kind").unwrap_or("function");
-                let addr = self.opt_s(&params, "addr");
+                let session = self.session_for(&Self::s(params, "binary_path")).await?;
+                let kind = Self::opt_s(params, "kind").unwrap_or("function");
+                let addr = Self::opt_s(params, "addr");
                 // Per-kind addr validation: function, callgraph, imports, refs, xrefs, and
                 // data_refs require an addr. Without it the agent gets a massive global graph.
                 let needs_addr = matches!(
                     kind.trim(),
-                    "" | "function" | "cfg" | "agf"
-                        | "callgraph" | "calls" | "agc"
-                        | "imports" | "agi"
-                        | "refs" | "references" | "agr"
-                        | "xrefs" | "crossrefs" | "agx"
-                        | "data_refs" | "data" | "aga"
+                    "" | "function"
+                        | "cfg"
+                        | "agf"
+                        | "callgraph"
+                        | "calls"
+                        | "agc"
+                        | "imports"
+                        | "agi"
+                        | "refs"
+                        | "references"
+                        | "agr"
+                        | "xrefs"
+                        | "crossrefs"
+                        | "agx"
+                        | "data_refs"
+                        | "data"
+                        | "aga"
                 );
                 if needs_addr && addr.is_none() {
                     return Err(err(format!(
@@ -1582,7 +1865,7 @@ impl ServerHandler for RbmServer {
                 let result = rbm_r2::disasm::graph(
                     &session,
                     kind,
-                    self.opt_s(&params, "format").unwrap_or("json"),
+                    Self::opt_s(params, "format").unwrap_or("json"),
                     addr,
                 )
                 .await
@@ -1590,9 +1873,21 @@ impl ServerHandler for RbmServer {
                 self.ok_json_guarded("r2_graph", result)
             }
 
+            _ => return Ok(None),
+        };
+        result.map(Some)
+    }
+
+    async fn call_tool_26(
+        &self,
+        name: &str,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Option<CallToolResult>, ErrorData> {
+        let _ = params;
+        let result = match name {
             "r2_security" => {
-                let session = self.session_for(&self.s(&params, "binary_path")).await?;
-                let mode = self.s(&params, "mode");
+                let session = self.session_for(&Self::s(params, "binary_path")).await?;
+                let mode = Self::s(params, "mode");
                 let mode = match mode.trim() {
                     "" | "checksec" | "hardening" => "checksec",
                     "entropy" | "sections_entropy" => "entropy",
@@ -1611,17 +1906,29 @@ impl ServerHandler for RbmServer {
                         .map_err(|e| err(e.to_string()))?,
                     _ => unreachable!("mode is normalized before dispatch"),
                 };
-                self.ok_json(serde_json::json!({
+                Self::ok_json(serde_json::json!({
                     "schema": "rbm.r2.security.v0",
                     "mode": mode,
                     "result": result,
                 }))
             }
 
+            _ => return Ok(None),
+        };
+        result.map(Some)
+    }
+
+    async fn call_tool_27(
+        &self,
+        name: &str,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Option<CallToolResult>, ErrorData> {
+        let _ = params;
+        let result = match name {
             "r2_xrefs" => {
-                let binary_path = self.s(&params, "binary_path");
-                let addr = self.s(&params, "addr");
-                let direction = self.opt_s(&params, "direction").unwrap_or("to");
+                let binary_path = Self::s(params, "binary_path");
+                let addr = Self::s(params, "addr");
+                let direction = Self::opt_s(params, "direction").unwrap_or("to");
 
                 let session = self.session_for(&binary_path).await?;
                 let dir =
@@ -1630,7 +1937,7 @@ impl ServerHandler for RbmServer {
                     .await
                     .map_err(|e| err(e.to_string()))?;
                 let count = result.as_array().map_or(0, Vec::len);
-                self.ok_json(serde_json::json!({
+                Self::ok_json(serde_json::json!({
                     "schema": "rbm.r2.xrefs.v0",
                     "binary_path": binary_path,
                     "addr": addr,
@@ -1640,111 +1947,207 @@ impl ServerHandler for RbmServer {
                 }))
             }
 
+            _ => return Ok(None),
+        };
+        result.map(Some)
+    }
+
+    async fn call_tool_28(
+        &self,
+        name: &str,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Option<CallToolResult>, ErrorData> {
+        let _ = params;
+        let result = match name {
             "r2_global_xrefs" => {
-                let session = self.session_for(&self.s(&params, "binary_path")).await?;
-                let offset = self.opt_usize(&params, "offset").unwrap_or(0);
-                let limit = self.opt_usize(&params, "limit").unwrap_or(50);
+                let session = self.session_for(&Self::s(params, "binary_path")).await?;
+                let offset = Self::opt_usize(params, "offset").unwrap_or(0);
+                let limit = Self::opt_usize(params, "limit").unwrap_or(50);
                 let result = rbm_r2::navigation::global_xrefs(&session, offset, limit)
                     .await
                     .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
+                Self::ok_json(result)
             }
 
+            _ => return Ok(None),
+        };
+        result.map(Some)
+    }
+
+    async fn call_tool_29(
+        &self,
+        name: &str,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Option<CallToolResult>, ErrorData> {
+        let _ = params;
+        let result = match name {
             "r2_esil_accesses" => {
-                let session = self.session_for(&self.s(&params, "binary_path")).await?;
-                let count = self.opt_u32(&params, "count").unwrap_or(32);
+                let session = self.session_for(&Self::s(params, "binary_path")).await?;
+                let count = Self::opt_u32(params, "count").unwrap_or(32);
                 let result = rbm_r2::disasm::esil_accesses(
                     &session,
-                    &self.s(&params, "addr"),
-                    self.opt_s(&params, "mode").unwrap_or("instructions"),
+                    &Self::s(params, "addr"),
+                    Self::opt_s(params, "mode").unwrap_or("instructions"),
                     count,
                 )
                 .await
                 .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
+                Self::ok_json(result)
             }
 
+            _ => return Ok(None),
+        };
+        result.map(Some)
+    }
+
+    async fn call_tool_30(
+        &self,
+        name: &str,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Option<CallToolResult>, ErrorData> {
+        let _ = params;
+        let result = match name {
             "r2_var_xrefs" => {
-                let session = self.session_for(&self.s(&params, "binary_path")).await?;
-                let result = rbm_r2::disasm::variable_xrefs(&session, &self.s(&params, "addr"))
+                let session = self.session_for(&Self::s(params, "binary_path")).await?;
+                let result = rbm_r2::disasm::variable_xrefs(&session, &Self::s(params, "addr"))
                     .await
                     .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
+                Self::ok_json(result)
             }
 
+            _ => return Ok(None),
+        };
+        result.map(Some)
+    }
+
+    async fn call_tool_31(
+        &self,
+        name: &str,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Option<CallToolResult>, ErrorData> {
+        let _ = params;
+        let result = match name {
             "r2_cmd" => {
-                let session = self.session_for(&self.s(&params, "binary_path")).await?;
-                let raw = rbm_r2::cmd::raw_cmd(&session, &self.s(&params, "command"))
+                let session = self.session_for(&Self::s(params, "binary_path")).await?;
+                let raw = rbm_r2::cmd::raw_cmd(&session, &Self::s(params, "command"))
                     .await
                     .map_err(|e| err(e.to_string()))?;
                 let guarded =
                     guard_r2_cmd_output(&self.output_guard, raw).map_err(|e| err(e.to_string()))?;
-                self.ok_json(guarded)
+                Self::ok_json(guarded)
             }
 
+            _ => return Ok(None),
+        };
+        result.map(Some)
+    }
+
+    async fn call_tool_32(
+        &self,
+        name: &str,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Option<CallToolResult>, ErrorData> {
+        let _ = params;
+        let result = match name {
             "r2_trace_data_flow" => {
-                let session = self.session_for(&self.s(&params, "binary_path")).await?;
-                let direction = self.opt_s(&params, "direction").unwrap_or("backward");
+                let session = self.session_for(&Self::s(params, "binary_path")).await?;
+                let direction = Self::opt_s(params, "direction").unwrap_or("backward");
                 let tra_dir = rbm_r2::trace::TraceDirection::parse(direction)
                     .map_err(|e| err(e.to_string()))?;
-                let max_depth = self.opt_u64(&params, "max_depth").unwrap_or(5) as i64;
+                let max_depth = i64::try_from(Self::opt_u64(params, "max_depth").unwrap_or(5))
+                    .unwrap_or(i64::MAX);
                 let result = rbm_r2::trace::trace_data_flow(
                     &session,
-                    &self.s(&params, "addr"),
+                    &Self::s(params, "addr"),
                     tra_dir,
                     max_depth,
                 )
                 .await
                 .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
+                Self::ok_json(result)
             }
 
+            _ => return Ok(None),
+        };
+        result.map(Some)
+    }
+
+    async fn call_tool_33(
+        &self,
+        name: &str,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Option<CallToolResult>, ErrorData> {
+        let _ = params;
+        let result = match name {
             "r2_value_trace" => {
-                let session = self.session_for(&self.s(&params, "binary_path")).await?;
+                let session = self.session_for(&Self::s(params, "binary_path")).await?;
                 let result = rbm_r2::trace::trace_seed_value(
                     &session,
-                    &self.s(&params, "start_addr"),
+                    &Self::s(params, "start_addr"),
                     rbm_r2::trace::ValueTraceOptions {
-                        arch: self.opt_s(&params, "arch"),
-                        bits: self.opt_u32(&params, "bits").unwrap_or(0),
-                        seed_register: &self.s(&params, "seed_register"),
-                        seed_memory: self.opt_s(&params, "seed_memory"),
-                        seed_value: self.opt_s(&params, "seed_value"),
-                        max_instructions: self.opt_u32(&params, "max_instructions").unwrap_or(300),
-                        max_events: self.opt_usize(&params, "max_events").unwrap_or(100),
+                        arch: Self::opt_s(params, "arch"),
+                        bits: Self::opt_u32(params, "bits").unwrap_or(0),
+                        seed_register: &Self::s(params, "seed_register"),
+                        seed_memory: Self::opt_s(params, "seed_memory"),
+                        seed_value: Self::opt_s(params, "seed_value"),
+                        max_instructions: Self::opt_u32(params, "max_instructions").unwrap_or(300),
+                        max_events: Self::opt_usize(params, "max_events").unwrap_or(100),
                     },
                 )
                 .await
                 .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
+                Self::ok_json(result)
             }
 
+            _ => return Ok(None),
+        };
+        result.map(Some)
+    }
+
+    async fn call_tool_34(
+        &self,
+        name: &str,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Option<CallToolResult>, ErrorData> {
+        let _ = params;
+        let result = match name {
             "r2_windows_driver_dispatch" => {
-                let session = self.session_for(&self.s(&params, "binary_path")).await?;
+                let session = self.session_for(&Self::s(params, "binary_path")).await?;
                 let result = rbm_r2::windows_driver::windows_driver_dispatch(
                     &session,
                     rbm_r2::windows_driver::DriverDispatchOptions {
-                        init_addr: &self.s(&params, "init_addr"),
-                        driver_register: self.opt_s(&params, "driver_register").unwrap_or("rcx"),
-                        max_instructions: self.opt_u64(&params, "max_instructions").unwrap_or(220),
+                        init_addr: &Self::s(params, "init_addr"),
+                        driver_register: Self::opt_s(params, "driver_register").unwrap_or("rcx"),
+                        max_instructions: Self::opt_u64(params, "max_instructions").unwrap_or(220),
                     },
                 )
                 .await
                 .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
+                Self::ok_json(result)
             }
 
+            _ => return Ok(None),
+        };
+        result.map(Some)
+    }
+
+    async fn call_tool_35(
+        &self,
+        name: &str,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Option<CallToolResult>, ErrorData> {
+        let _ = params;
+        let result = match name {
             "r2_jump_table_slices" => self
-                .with_session_json(&self.s(&params, "binary_path"), |session| async move {
-                    let entry_count = self
-                        .opt_u32(&params, "entry_count")
+                .with_session_json(&Self::s(params, "binary_path"), |session| async move {
+                    let entry_count = Self::opt_u32(params, "entry_count")
                         .ok_or_else(|| ToolError::invalid("entry_count is required"))?;
-                    let pointer_size = self.opt_u32(&params, "pointer_size").unwrap_or(4);
-                    let target_bytes = self.opt_u64(&params, "target_bytes").unwrap_or(512);
-                    let max_instructions = self.opt_u32(&params, "max_instructions").unwrap_or(120);
+                    let pointer_size = Self::opt_u32(params, "pointer_size").unwrap_or(4);
+                    let target_bytes = Self::opt_u64(params, "target_bytes").unwrap_or(512);
+                    let max_instructions = Self::opt_u32(params, "max_instructions").unwrap_or(120);
                     rbm_r2::jump_table::jump_table_slices(
                         &session,
-                        &self.s(&params, "table_addr"),
+                        &Self::s(params, "table_addr"),
                         entry_count,
                         pointer_size,
                         target_bytes,
@@ -1754,76 +2157,252 @@ impl ServerHandler for RbmServer {
                 })
                 .await
                 .map(|s| CallToolResult::success(vec![Content::text(s)])),
+            _ => return Ok(None),
+        };
+        result.map(Some)
+    }
 
+    async fn call_tool_36(
+        &self,
+        name: &str,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Option<CallToolResult>, ErrorData> {
+        let _ = params;
+        let result = match name {
             "r2_path_digest" => {
-                let session = self.session_for(&self.s(&params, "binary_path")).await?;
+                let session = self.session_for(&Self::s(params, "binary_path")).await?;
                 let result = rbm_r2::path_digest::path_digest(
                     &session,
-                    &self.s(&params, "start_addr"),
+                    &Self::s(params, "start_addr"),
                     rbm_r2::path_digest::PathDigestOptions {
-                        arch: self.opt_s(&params, "arch"),
-                        bits: self.opt_u32(&params, "bits").unwrap_or(0),
-                        range_end: self.opt_s(&params, "range_end"),
-                        stop_addresses: self.opt_s(&params, "stop_addresses"),
-                        state_register: self.opt_s(&params, "state_register"),
-                        marker_constants: self.opt_s(&params, "marker_constants"),
-                        max_instructions: self.opt_u32(&params, "max_instructions").unwrap_or(800),
-                        max_events: self.opt_usize(&params, "max_events").unwrap_or(80),
+                        arch: Self::opt_s(params, "arch"),
+                        bits: Self::opt_u32(params, "bits").unwrap_or(0),
+                        range_end: Self::opt_s(params, "range_end"),
+                        stop_addresses: Self::opt_s(params, "stop_addresses"),
+                        state_register: Self::opt_s(params, "state_register"),
+                        marker_constants: Self::opt_s(params, "marker_constants"),
+                        max_instructions: Self::opt_u32(params, "max_instructions").unwrap_or(800),
+                        max_events: Self::opt_usize(params, "max_events").unwrap_or(80),
                     },
                 )
                 .await
                 .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
+                Self::ok_json(result)
             }
 
+            _ => return Ok(None),
+        };
+        result.map(Some)
+    }
+
+    async fn call_tool_37(
+        &self,
+        name: &str,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Option<CallToolResult>, ErrorData> {
+        let _ = params;
+        let result = match name {
             "r2_artifact_summary" => {
-                let session = self.session_for(&self.s(&params, "binary_path")).await?;
+                let session = self.session_for(&Self::s(params, "binary_path")).await?;
                 let result = rbm_r2::artifact_summary::artifact_summary(
                     &session,
-                    &self.s(&params, "start_addr"),
+                    &Self::s(params, "start_addr"),
                     rbm_r2::artifact_summary::ArtifactSummaryOptions {
-                        arch: self.opt_s(&params, "arch"),
-                        bits: self.opt_u32(&params, "bits").unwrap_or(0),
-                        range_end: self.opt_s(&params, "range_end"),
-                        max_instructions: self.opt_u32(&params, "max_instructions").unwrap_or(1200),
-                        max_steps: self.opt_usize(&params, "max_steps").unwrap_or(20000),
-                        min_string_len: self.opt_usize(&params, "min_string_len").unwrap_or(4),
+                        arch: Self::opt_s(params, "arch"),
+                        bits: Self::opt_u32(params, "bits").unwrap_or(0),
+                        range_end: Self::opt_s(params, "range_end"),
+                        max_instructions: Self::opt_u32(params, "max_instructions").unwrap_or(1200),
+                        max_steps: Self::opt_usize(params, "max_steps").unwrap_or(20000),
+                        min_string_len: Self::opt_usize(params, "min_string_len").unwrap_or(4),
                     },
                 )
                 .await
                 .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
+                Self::ok_json(result)
             }
 
+            _ => return Ok(None),
+        };
+        result.map(Some)
+    }
+
+    async fn call_tool_38(
+        &self,
+        name: &str,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Option<CallToolResult>, ErrorData> {
+        let _ = params;
+        let result = match name {
             "r2_field_xrefs" => {
-                let session = self.session_for(&self.s(&params, "binary_path")).await?;
+                let session = self.session_for(&Self::s(params, "binary_path")).await?;
                 let result = rbm_r2::field_xrefs::field_xrefs(
                     &session,
-                    &self.s(&params, "start_addr"),
+                    &Self::s(params, "start_addr"),
                     rbm_r2::field_xrefs::FieldXrefsOptions {
-                        arch: self.opt_s(&params, "arch"),
-                        bits: self.opt_u32(&params, "bits").unwrap_or(0),
-                        range_end: self.opt_s(&params, "range_end"),
-                        root_register: self.opt_s(&params, "root_register"),
-                        root_name: self.opt_s(&params, "root_name"),
-                        arg_names: self.opt_s(&params, "arg_names"),
-                        resolver_function: self.opt_s(&params, "resolver_function"),
-                        marker_constants: self.opt_s(&params, "marker_constants"),
-                        ignore_stack: self.opt_bool(&params, "ignore_stack").unwrap_or(false),
-                        max_instructions: self.opt_u32(&params, "max_instructions").unwrap_or(800),
-                        max_rows: self.opt_usize(&params, "max_rows").unwrap_or(60),
+                        arch: Self::opt_s(params, "arch"),
+                        bits: Self::opt_u32(params, "bits").unwrap_or(0),
+                        range_end: Self::opt_s(params, "range_end"),
+                        root_register: Self::opt_s(params, "root_register"),
+                        root_name: Self::opt_s(params, "root_name"),
+                        arg_names: Self::opt_s(params, "arg_names"),
+                        resolver_function: Self::opt_s(params, "resolver_function"),
+                        marker_constants: Self::opt_s(params, "marker_constants"),
+                        ignore_stack: Self::opt_bool(params, "ignore_stack").unwrap_or(false),
+                        max_instructions: Self::opt_u32(params, "max_instructions").unwrap_or(800),
+                        max_rows: Self::opt_usize(params, "max_rows").unwrap_or(60),
                     },
                 )
                 .await
                 .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
+                Self::ok_json(result)
             }
 
-            _ => Err(ErrorData::new(
-                rmcp::model::ErrorCode::INVALID_PARAMS,
-                format!("unknown tool: {name}"),
-                None,
-            )),
+            _ => return Ok(None),
+        };
+        result.map(Some)
+    }
+
+    async fn r2_metadata(
+        &self,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let binary_path = Self::s(params, "binary_path");
+        let mode = Self::s(params, "mode");
+        let mode = normalize_r2_metadata_mode(&mode)?;
+        let session = self.session_for(&binary_path).await?;
+        let result = self.r2_metadata_value(&session, mode, params).await?;
+
+        if paginates_metadata(mode) {
+            let offset = Self::opt_usize(params, "offset").unwrap_or(0);
+            let limit = Self::opt_usize(params, "limit").unwrap_or(0);
+            let (result, total_matched, returned, truncated) =
+                paginate_with_counts(result, offset, limit);
+            return Self::ok_json(serde_json::json!({
+                "schema": "rbm.r2.metadata.v0",
+                "binary_path": binary_path,
+                "mode": mode,
+                "offset": offset,
+                "limit": limit,
+                "total_matched": total_matched,
+                "returned": returned,
+                "truncated": truncated,
+                "result": result,
+            }));
+        }
+
+        Self::ok_json(serde_json::json!({
+            "schema": "rbm.r2.metadata.v0",
+            "binary_path": binary_path,
+            "mode": mode,
+            "result": result,
+        }))
+    }
+
+    async fn r2_metadata_value(
+        &self,
+        session: &Arc<rbm_r2::Session>,
+        mode: &str,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Value, ErrorData> {
+        match mode {
+            "info" => rbm_r2::meta::info(session)
+                .await
+                .map_err(|e| err(e.to_string())),
+            "headers" => rbm_r2::meta::rich_header(session)
+                .await
+                .map(|value| serde_json::json!(value))
+                .map_err(|e| err(e.to_string())),
+            "version_info" => rbm_r2::meta::version_info(session)
+                .await
+                .map(|value| serde_json::json!(value))
+                .map_err(|e| err(e.to_string())),
+            "entry_points" => rbm_r2::meta::entry_points(session)
+                .await
+                .map_err(|e| err(e.to_string())),
+            "sections" => rbm_r2::format::sections(session)
+                .await
+                .map_err(|e| err(e.to_string())),
+            "relocations" => rbm_r2::format::relocations(session)
+                .await
+                .map_err(|e| err(e.to_string())),
+            "resources" => rbm_r2::format::resources(session)
+                .await
+                .map_err(|e| err(e.to_string())),
+            "libraries" => rbm_r2::format::libraries(session)
+                .await
+                .map(|value| serde_json::json!(value))
+                .map_err(|e| err(e.to_string())),
+            "imports" => self.filtered_imports(session, params).await,
+            "exports" => self.filtered_exports(session, params).await,
+            "symbols" => self.filtered_symbols(session, params).await,
+            "strings" => self.filtered_strings(session, params).await,
+            "functions" => self.filtered_functions(session, params).await,
+            _ => unreachable!("mode is normalized before dispatch"),
+        }
+    }
+
+    async fn filtered_imports(
+        &self,
+        session: &Arc<rbm_r2::Session>,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Value, ErrorData> {
+        let value = rbm_r2::symbols::imports(session)
+            .await
+            .map_err(|e| err(e.to_string()))?;
+        apply_name_filter(value, Self::opt_s(params, "filter")).map_err(|e| err(e.to_string()))
+    }
+
+    async fn filtered_exports(
+        &self,
+        session: &Arc<rbm_r2::Session>,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Value, ErrorData> {
+        let value = rbm_r2::symbols::exports(session)
+            .await
+            .map_err(|e| err(e.to_string()))?;
+        apply_name_filter(value, Self::opt_s(params, "filter")).map_err(|e| err(e.to_string()))
+    }
+
+    async fn filtered_symbols(
+        &self,
+        session: &Arc<rbm_r2::Session>,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Value, ErrorData> {
+        let value = rbm_r2::symbols::symbols(session)
+            .await
+            .map_err(|e| err(e.to_string()))?;
+        apply_name_filter(value, Self::opt_s(params, "filter")).map_err(|e| err(e.to_string()))
+    }
+
+    async fn filtered_functions(
+        &self,
+        session: &Arc<rbm_r2::Session>,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Value, ErrorData> {
+        let value = rbm_r2::disasm::functions(session)
+            .await
+            .map_err(|e| err(e.to_string()))?;
+        apply_name_filter(value, Self::opt_s(params, "filter")).map_err(|e| err(e.to_string()))
+    }
+
+    async fn filtered_strings(
+        &self,
+        session: &Arc<rbm_r2::Session>,
+        params: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Value, ErrorData> {
+        let min_length = Self::opt_usize(params, "min_length").unwrap_or(5);
+        let all_sections = Self::opt_bool(params, "all_sections").unwrap_or(true);
+        let value = if all_sections {
+            rbm_r2::symbols::strings_all(session, min_length).await
+        } else {
+            rbm_r2::symbols::strings(session, min_length).await
+        }
+        .map_err(|e| err(e.to_string()))?;
+        if let Some(pattern) = Self::opt_s(params, "filter").filter(|s| !s.is_empty()) {
+            rbm_r2::symbols::filter_by_string_content(value, pattern)
+                .map_err(|e| err(e.to_string()))
+        } else {
+            Ok(value)
         }
     }
 }
@@ -1901,6 +2480,22 @@ fn paginate_with_counts(value: Value, offset: usize, limit: usize) -> (Value, us
     (paged, total, returned, truncated)
 }
 
+fn paginates_metadata(mode: &str) -> bool {
+    matches!(
+        mode,
+        "entry_points"
+            | "sections"
+            | "relocations"
+            | "resources"
+            | "libraries"
+            | "imports"
+            | "exports"
+            | "symbols"
+            | "strings"
+            | "functions"
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
@@ -1927,7 +2522,7 @@ mod tests {
             assert_eq!(
                 tool.input_schema
                     .get("additionalProperties")
-                    .and_then(|v| v.as_bool()),
+                    .and_then(serde_json::Value::as_bool),
                 Some(false),
                 "{} should reject unknown parameter names",
                 tool.name
@@ -1984,7 +2579,7 @@ mod tests {
 
     #[test]
     fn find_xrefs_accepts_numeric_address_fields() {
-        let item = json!({"plt": 5368987720_u64, "name": "CreateProcessA"});
+        let item = json!({"plt": 5_368_987_720_u64, "name": "CreateProcessA"});
 
         assert_eq!(find_xref_item_addr(&item), "0x140044048");
     }
