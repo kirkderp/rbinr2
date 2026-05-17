@@ -1,0 +1,72 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/rbm-core",
+    "crates/rbm-r2",
+    "crates/rbm-server",
+]
+
+[workspace.package]
+version = "1.3.0"
+edition = "2024"
+rust-version = "1.88"
+license = "MIT"
+repository = "https://github.com/kirkderp/rbinr2"
+readme = "README.md"
+keywords = ["binary-analysis", "radare2", "reverse-engineering"]
+categories = ["command-line-utilities", "development-tools"]
+
+[workspace.dependencies]
+rmcp = { version = "1.7", features = ["server", "macros", "transport-io"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+anyhow = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+clap = { version = "4", features = ["derive"] }
+schemars = "1"
+tempfile = "3"
+dashmap = "6"
+sha2 = "0.10"
+hex = "0.4"
+regex = "1"
+r2pipe = "0.8"
+
+rbm-core = { path = "crates/rbm-core" }
+rbm-r2 = { path = "crates/rbm-r2" }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+unsafe_code = "deny"
+missing_docs = "allow"  # docs are in tool descriptions, not pub fn headers
+single_use_lifetimes = "deny"
+unreachable_pub = "deny"
+unexpected_cfgs = "deny"
+clashing_extern_declarations = "deny"
+missing_copy_implementations = "deny"
+noop_method_call = "deny"
+trivial_casts = "deny"
+trivial_numeric_casts = "deny"
+unused_import_braces = "deny"
+unused_lifetimes = "deny"
+variant_size_differences = "deny"
+elided_lifetimes_in_paths = "allow"  # noisy
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
+cargo = { level = "deny", priority = -1 }
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+undocumented_unsafe_blocks = "deny"
+multiple_crate_versions = "allow"
+redundant_pub_crate = "allow"

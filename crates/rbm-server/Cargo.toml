@@ -1,0 +1,35 @@
+[package]
+name = "rbm-server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+description = "MCP server for radare2-based binary analysis"
+keywords.workspace = true
+categories.workspace = true
+
+[[bin]]
+name = "rbinr2"
+path = "src/main.rs"
+
+[dependencies]
+rmcp.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+clap.workspace = true
+schemars.workspace = true
+sha2.workspace = true
+hex.workspace = true
+
+rbm-core.workspace = true
+rbm-r2.workspace = true
+
+[lints]
+workspace = true

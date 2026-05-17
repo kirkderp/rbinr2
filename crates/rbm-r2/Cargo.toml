@@ -1,0 +1,33 @@
+[package]
+name = "rbm-r2"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "radare2 backend (r2pipe session management and r2_* tools) for rbinr2"
+publish = false
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+rbm-core.workspace = true
+r2pipe.workspace = true
+tokio = { workspace = true, features = ["sync", "macros", "rt-multi-thread", "time"] }
+dashmap.workspace = true
+regex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["sync", "macros", "rt-multi-thread", "time"] }
+
+[features]
+default = []
+integration-r2 = []
+
+[lints]
+workspace = true
