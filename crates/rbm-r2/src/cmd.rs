@@ -1,4 +1,4 @@
-use rbm_core::ToolResult;
+use rbm_core::{ToolError, ToolResult};
 
 use crate::session::Session;
 
@@ -9,5 +9,78 @@ use crate::session::Session;
 /// Returns an error if the r2 session worker is unavailable or if r2 rejects the
 /// command.
 pub async fn raw_cmd(session: &Session, command: &str) -> ToolResult<String> {
+    validate_query_command(command)?;
     session.cmd(command).await
+}
+
+/// Validate that a raw command is a single read-oriented r2 query.
+///
+/// r2_cmd is an escape hatch for inspection, not a mutation API. Keeping it
+/// read-oriented avoids silent persistent-session poisoning across later tools.
+///
+/// # Errors
+///
+/// Returns an error for empty commands, r2 command separators, shell escapes,
+/// and common state/file mutation command forms.
+pub fn validate_query_command(command: &str) -> ToolResult<()> {
+    let trimmed = command.trim();
+    if trimmed.is_empty() {
+        return Err(ToolError::invalid("r2_cmd command is empty"));
+    }
+    if trimmed
+        .chars()
+        .any(|c| matches!(c, ';' | '\n' | '\r' | '|' | '`'))
+    {
+        return Err(ToolError::invalid(format!(
+            "r2_cmd accepts one query command; separators are not allowed: {command:?}"
+        )));
+    }
+    if trimmed.contains('!') {
+        return Err(ToolError::invalid(
+            "r2_cmd does not allow shell escapes or bang commands",
+        ));
+    }
+
+    let first = trimmed.split_whitespace().next().unwrap_or(trimmed);
+    if first.starts_with('w') {
+        return Err(ToolError::invalid(format!(
+            "r2_cmd is read-only; write command {first:?} is not allowed"
+        )));
+    }
+    if matches!(first, "oo" | "ood" | "oodf" | "doo" | "doc" | "dos") || first == "o" {
+        return Err(ToolError::invalid(format!(
+            "r2_cmd is read-only; open/debug mutation command {first:?} is not allowed"
+        )));
+    }
+    if first == "s" || first.starts_with("s+") || first.starts_with("s-") {
+        return Err(ToolError::invalid(
+            "r2_cmd is read-only; seek mutation commands are not allowed",
+        ));
+    }
+    if first == "e" && trimmed.contains('=') {
+        return Err(ToolError::invalid(
+            "r2_cmd is read-only; use named tools instead of mutating r2 eval settings",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_query_command;
+
+    #[test]
+    fn allows_read_queries() {
+        assert!(validate_query_command("ij").is_ok());
+        assert!(validate_query_command("aflj").is_ok());
+        assert!(validate_query_command("e asm.arch").is_ok());
+    }
+
+    #[test]
+    fn rejects_obvious_mutations_and_separators() {
+        assert!(validate_query_command("e asm.arch=x86").is_err());
+        assert!(validate_query_command("wx 90").is_err());
+        assert!(validate_query_command("ij; wx 90").is_err());
+        assert!(validate_query_command("!sh").is_err());
+    }
 }

@@ -1,7 +1,7 @@
 use rbm_core::{ToolError, ToolResult};
 use serde_json::{Value, json};
 
-use crate::filters::build_filter_regex;
+use crate::search::glob_or_substring_match;
 use crate::session::Session;
 
 /// Return r2 section metadata.
@@ -154,7 +154,10 @@ pub fn validate_classname(classname: &str) -> ToolResult<()> {
 ///
 /// Returns an error if `pattern` is not a valid regular expression.
 pub fn filter_classes(value: Value, pattern: &str) -> ToolResult<Value> {
-    let regex = build_filter_regex(pattern)?;
+    if pattern.is_empty() {
+        return Ok(value);
+    }
+    let needle = pattern.to_lowercase();
     let Value::Array(arr) = value else {
         return Ok(value);
     };
@@ -165,8 +168,9 @@ pub fn filter_classes(value: Value, pattern: &str) -> ToolResult<Value> {
                 .get("classname")
                 .and_then(Value::as_str)
                 .or_else(|| item.get("name").and_then(Value::as_str))
-                .unwrap_or("");
-            regex.is_match(name)
+                .unwrap_or("")
+                .to_lowercase();
+            glob_or_substring_match(&needle, &name)
         })
         .collect();
     Ok(Value::Array(filtered))

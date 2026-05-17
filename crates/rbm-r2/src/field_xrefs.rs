@@ -4,7 +4,7 @@ use rbm_core::{ToolError, ToolResult};
 use regex::Regex;
 use serde_json::{Value, json};
 
-use crate::disasm::validate_addr;
+use crate::disasm::{validate_addr, validate_value};
 use crate::session::Session;
 
 const DEFAULT_MAX_INSTRUCTIONS: u32 = 800;
@@ -40,16 +40,12 @@ pub async fn field_xrefs(
 ) -> ToolResult<Value> {
     validate_addr(start_addr)?;
     if let Some(end) = options.range_end {
-        validate_addr(end)?;
+        validate_value("range_end", end)?;
     }
     if let Some(arch) = options.arch {
         validate_r2_setting("arch", arch)?;
-        session.cmd(format!("e asm.arch={arch}")).await?;
     }
-    if options.bits != 0 {
-        validate_bits(options.bits)?;
-        session.cmd(format!("e asm.bits={}", options.bits)).await?;
-    }
+    validate_bits(options.bits)?;
     if let Some(register) = options.root_register.filter(|s| !s.trim().is_empty()) {
         validate_token("root_register", register)?;
     }
@@ -57,13 +53,18 @@ pub async fn field_xrefs(
         validate_symbol_name("root_name", name)?;
     }
     if let Some(resolver) = options.resolver_function.filter(|s| !s.trim().is_empty()) {
-        validate_addr(resolver)?;
+        validate_value("resolver_function", resolver)?;
     }
 
     let max_instructions = clamp_instructions(options.max_instructions);
-    let ops = session
-        .cmdj(format!("pdj {max_instructions} @ {start_addr}"))
+    let snapshot = session
+        .apply_asm_settings(options.arch, options.bits)
         .await?;
+    let ops_result = session
+        .cmdj(format!("pdj {max_instructions} @ {start_addr}"))
+        .await;
+    session.restore_asm_settings(snapshot).await?;
+    let ops = ops_result?;
     let ops = match ops {
         Value::Array(arr) => arr,
         _ => Vec::new(),
@@ -637,9 +638,9 @@ fn validate_r2_setting(label: &str, value: &str) -> ToolResult<()> {
 
 fn validate_bits(bits: u32) -> ToolResult<()> {
     match bits {
-        8 | 16 | 32 | 64 => Ok(()),
+        0 | 8 | 16 | 32 | 64 => Ok(()),
         other => Err(ToolError::invalid(format!(
-            "bits must be 8, 16, 32, or 64, got {other}"
+            "bits must be one of 0, 8, 16, 32, 64; got {other}"
         ))),
     }
 }
@@ -735,5 +736,23 @@ fn format_signed_hex(value: i64) -> String {
         format!("-{:#x}", value.unsigned_abs())
     } else {
         format!("{value:#x}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_marker_constants, validate_bits};
+
+    #[test]
+    fn bits_zero_uses_r2_default() {
+        assert!(validate_bits(0).is_ok());
+        assert!(validate_bits(64).is_ok());
+        assert!(validate_bits(12).is_err());
+    }
+
+    #[test]
+    fn marker_constants_reject_non_symbol_names() {
+        assert!(parse_marker_constants("0x1234=good.marker-1").is_ok());
+        assert!(parse_marker_constants("0x1234=bad marker").is_err());
     }
 }

@@ -86,14 +86,16 @@ pub async fn find(
         "imports" => find_imports(session, pattern, cap).await?,
         "bytes" => find_bytes(session, pattern, cap).await?,
         other => {
-            return Ok(json!({
-                "error": format!("Unknown search_type: {other}. Use: functions, strings, imports, bytes"),
-            }));
+            return Err(ToolError::invalid(format!(
+                "unknown search_type {other:?}; expected functions, strings, imports, or bytes"
+            )));
         }
     };
     Ok(json!({
+        "schema": "rbm.r2.find.v0",
         "search_type": search_type,
         "pattern": pattern,
+        "limit": limit,
         "count": results.len(),
         "results": results,
     }))

@@ -105,6 +105,7 @@ The server speaks the MCP protocol over stdio. Configure your MCP client to use 
 | --- | --- | --- |
 | `RBM_CACHE_DIR` | `./rbinr2-cache` | Cache root (relative CWD) |
 | `RBM_R2_OPEN_TIMEOUT` | 120 | r2 session open timeout (seconds) |
+| `RBM_TOOL_TIMEOUT_SECS` | 30 | per-tool r2 command timeout (seconds) |
 
 ## Architecture
 

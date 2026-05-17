@@ -8,6 +8,7 @@ use crate::paths::CachePaths;
 pub struct ServerConfig {
     pub cache: CachePaths,
     pub r2_open_timeout: Duration,
+    pub tool_timeout: Duration,
 }
 
 impl ServerConfig {
@@ -22,6 +23,7 @@ impl ServerConfig {
         Ok(Self {
             cache,
             r2_open_timeout: Duration::from_secs(parse_env_secs("RBM_R2_OPEN_TIMEOUT", 120)),
+            tool_timeout: Duration::from_secs(parse_env_secs("RBM_TOOL_TIMEOUT_SECS", 30)),
         })
     }
 }

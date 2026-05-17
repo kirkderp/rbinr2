@@ -35,6 +35,18 @@ pub fn validate_addr(addr: &str) -> ToolResult<()> {
     check_no_r2_separators("addr", addr)
 }
 
+/// Validate a labeled value against r2 command separators.
+///
+/// Use this when the MCP parameter name differs from "addr" (e.g., "pattern" in
+/// `r2_semantic_search mode=refs`), so the error message mentions the correct parameter.
+///
+/// # Errors
+///
+/// Returns an error if the value is empty or contains an r2 command separator.
+pub fn validate_value(label: &str, value: &str) -> ToolResult<()> {
+    check_no_r2_separators(label, value)
+}
+
 #[must_use]
 pub fn missing_function_response(addr: &str) -> Value {
     json!({
@@ -68,13 +80,8 @@ pub fn validate_expression(expression: &str) -> ToolResult<()> {
 
 fn check_no_r2_separators(label: &str, value: &str) -> ToolResult<()> {
     if value.is_empty() {
-        if label == "addr" {
-            return Err(ToolError::invalid(
-                "addr is empty; pass an address, symbol, or r2 flag in the MCP parameter named \"addr\".",
-            ));
-        }
         return Err(ToolError::invalid(format!(
-            "{label} is empty; pass a non-empty value for MCP parameter {label:?}"
+            "{label} is empty; pass an address, symbol, or r2 flag in the MCP parameter named \"{label}\".",
         )));
     }
     if value
@@ -222,14 +229,12 @@ pub async fn block_hash(
         .cmd(format!("ph {algorithm} {count} @ {addr}"))
         .await?;
     let value = raw.trim().to_string();
-    let number = value.parse::<f64>().ok().filter(|v| v.is_finite());
     Ok(json!({
         "schema": "rbm.r2.block_hash.v0",
         "addr": addr,
         "count": count,
         "algorithm": algorithm,
         "value": value,
-        "number": number,
     }))
 }
 
@@ -1016,6 +1021,11 @@ pub fn shape_disassembly_function(addr: &str, raw: &Value) -> Value {
 /// Returns an error if the address is invalid or if an r2 command fails.
 pub async fn decompile(session: &Session, addr: &str) -> ToolResult<String> {
     validate_addr(addr)?;
+    if !session_has_any_decompiler(session).await? {
+        return Err(ToolError::invalid(
+            "No r2 decompiler plugin available. Install r2ghidra (r2pm -ci r2ghidra) or r2dec (r2pm -ci r2dec), or use r2_decompile mode=meta for compact pdgj metadata.",
+        ));
+    }
     let pdg = session.cmd(format!("pdg @ {addr}")).await?;
     if !pdg.contains("Cannot") && is_meaningful_decompile_output(&pdg) {
         return Ok(pdg);
@@ -1079,6 +1089,16 @@ fn one_line_decompiler_reason(text: &str) -> String {
         .chars()
         .take(220)
         .collect()
+}
+
+/// Check if any r2 decompiler plugin is installed.
+///
+/// Runs `LDq` to list decompiler plugins and returns `true` if at least one
+/// is registered, `false` otherwise. This avoids wasted `pdg`/`pdd` calls
+/// that would return confusing "plugin not installed" messages as text.
+async fn session_has_any_decompiler(session: &Session) -> ToolResult<bool> {
+    let raw = session.cmd("LDq").await?;
+    Ok(raw.lines().any(|line| !line.trim().is_empty()))
 }
 
 pub fn shape_decompile_meta(addr: &str, raw: &Value) -> Value {

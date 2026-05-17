@@ -12,7 +12,7 @@
 // Manual MCP server for radare2-based binary analysis.
 use std::sync::Arc;
 
-use rbm_core::{OutputGuard, ServerConfig, ToolError};
+use rbm_core::{GuardedOutput, OutputGuard, ServerConfig, ToolError};
 use rbm_r2::SessionManager;
 use rmcp::handler::server::ServerHandler;
 use rmcp::model::{
@@ -23,7 +23,8 @@ use rmcp::service::{RequestContext, RoleServer};
 use serde_json::{Value, json};
 
 use crate::support::{
-    apply_name_filter, build_address_mapping, build_extract_bytes_result, guard_r2_cmd_output,
+    R2_CMD_MAX_INLINE_CHARS, apply_name_filter, build_address_mapping, build_extract_bytes_result,
+    guard_r2_cmd_output,
 };
 
 #[derive(Clone)]
@@ -39,9 +40,13 @@ impl RbmServer {
     pub fn new(config: ServerConfig) -> Self {
         let output_guard = Arc::new(OutputGuard::new(config.cache.overflow_dir()));
         let r2_open_timeout = config.r2_open_timeout;
+        let tool_timeout = config.tool_timeout;
         Self {
             config: Arc::new(config),
-            r2: Arc::new(SessionManager::with_open_timeout(r2_open_timeout)),
+            r2: Arc::new(
+                SessionManager::with_open_timeout(r2_open_timeout)
+                    .with_tool_timeout(tool_timeout),
+            ),
             output_guard,
             tools: Self::build_tools(),
         }
@@ -85,9 +90,15 @@ impl RbmServer {
         fn enum_s(desc: &str, values: &[&str]) -> serde_json::Value {
             serde_json::json!({"type": "string", "description": desc, "enum": values})
         }
+        fn enum_s_default(desc: &str, values: &[&str], default: &str) -> serde_json::Value {
+            serde_json::json!({"type": "string", "description": desc, "enum": values, "default": default})
+        }
         #[allow(dead_code)]
         fn opt_u32(desc: &str, def: u32) -> serde_json::Value {
-            serde_json::json!({"type": "integer", "description": desc, "default": def})
+            serde_json::json!({"type": "integer", "format": "uint32", "description": desc, "default": def})
+        }
+        fn opt_u32_capped(desc: &str, def: u32, max: u32) -> serde_json::Value {
+            serde_json::json!({"type": "integer", "format": "uint32", "description": desc, "default": def, "maximum": max})
         }
         fn schema(props: Vec<(&str, serde_json::Value)>, required: Vec<&str>) -> serde_json::Value {
             let mut p = serde_json::Map::new();
@@ -105,9 +116,12 @@ impl RbmServer {
         vec![
             t(
                 "r2_open",
-                "Open a binary with radare2 and start a persistent r2pipe session.",
+                "Open a binary with radare2 and start a persistent r2pipe session. Set force_reload=true to close an existing session and re-open (e.g., after the binary was modified on disk).",
                 schema(
-                    vec![("binary_path", req("absolute path to the binary"))],
+                    vec![
+                        ("binary_path", req("absolute path to the binary")),
+                        ("force_reload", json!({"type": "boolean", "description": "close and re-open if session already exists", "default": false})),
+                    ],
                     vec!["binary_path"],
                 ),
             ),
@@ -132,7 +146,7 @@ impl RbmServer {
                         ("binary_path", req("absolute path to the binary")),
                         (
                             "mode",
-                            enum_s(
+                            enum_s_default(
                                 "metadata mode",
                                 &[
                                     "info",
@@ -149,29 +163,33 @@ impl RbmServer {
                                     "strings",
                                     "functions",
                                 ],
+                                "info",
                             ),
                         ),
-                        ("filter", opt_s("optional regex filter")),
+                        ("filter", opt_s("optional glob/substring filter")),
                         (
                             "min_length",
                             json!({"type": "integer", "description": "minimum string length for mode=strings", "default": 5}),
                         ),
                         ("all_sections", json!({"type": "boolean", "default": true})),
-                        ("offset", json!({"type": "integer", "default": 0})),
-                        ("limit", json!({"type": "integer", "default": 0})),
+                        ("offset", opt_u32("result offset", 0)),
+                        ("limit", opt_u32("max results; 0 returns all", 0)),
                     ],
                     vec!["binary_path"],
                 ),
             ),
             t(
                 "r2_classes",
-                "List classes or inspect one class. Without classname, returns class list with optional regex filter. With classname, format=json (default) returns sorted methods/fields; format=text returns raw ic output.",
+                "List classes or inspect one class. Without classname, returns class list with optional glob/substring filter. With classname, format=json (default) returns sorted methods/fields; format=text returns raw ic output.",
                 schema(
                     vec![
                         ("binary_path", req("absolute path to the binary")),
                         ("classname", opt_s("specific class to inspect")),
-                        ("filter", opt_s("regex filter for class names")),
-                        ("format", enum_s("output format", &["json", "text"])),
+                        ("filter", opt_s("glob/substring filter for class names")),
+                        (
+                            "format",
+                            enum_s_default("output format", &["json", "text"], "json"),
+                        ),
                     ],
                     vec!["binary_path"],
                 ),
@@ -182,8 +200,8 @@ impl RbmServer {
                 schema(
                     vec![
                         ("binary_path", req("absolute path to the binary")),
-                        ("offset", json!({"type": "integer", "default": 0})),
-                        ("limit", json!({"type": "integer", "default": 50})),
+                        ("offset", opt_u32("result offset", 0)),
+                        ("limit", opt_u32_capped("max results", 50, 500)),
                     ],
                     vec!["binary_path"],
                 ),
@@ -196,7 +214,7 @@ impl RbmServer {
                         ("binary_path", req("absolute path to the binary")),
                         (
                             "mode",
-                            enum_s(
+                            enum_s_default(
                                 "type-system mode",
                                 &[
                                     "list",
@@ -214,13 +232,14 @@ impl RbmServer {
                                     "type_links",
                                     "calling_conventions",
                                 ],
+                                "list",
                             ),
                         ),
                         ("type_name", opt_s("type name for c/view/format/cast modes")),
                         ("addr", opt_s("address, symbol, or r2 flag for cast mode")),
-                        ("filter", opt_s("optional regex filter for JSON list modes")),
-                        ("offset", json!({"type": "integer", "default": 0})),
-                        ("limit", json!({"type": "integer", "default": 50})),
+                        ("filter", opt_s("optional glob/substring filter for JSON list modes")),
+                        ("offset", opt_u32("result offset", 0)),
+                        ("limit", opt_u32("max results", 50)),
                     ],
                     vec!["binary_path"],
                 ),
@@ -241,9 +260,10 @@ impl RbmServer {
                         ("binary_path", req("absolute path to the binary")),
                         (
                             "mode",
-                            enum_s(
+                            enum_s_default(
                                 "plugin mode",
                                 &["asm", "analysis", "bin", "hash", "decompile"],
+                                "asm",
                             ),
                         ),
                     ],
@@ -257,10 +277,7 @@ impl RbmServer {
                     vec![
                         ("binary_path", req("absolute path to the binary")),
                         ("addr", req("address, symbol, or r2 flag")),
-                        (
-                            "count",
-                            json!({"type": "integer", "description": "number of bytes to read", "default": 64}),
-                        ),
+                        ("count", opt_u32("number of bytes to read", 64)),
                     ],
                     vec!["binary_path", "addr"],
                 ),
@@ -272,10 +289,7 @@ impl RbmServer {
                     vec![
                         ("binary_path", req("absolute path to the binary")),
                         ("addr", req("address, symbol, or r2 flag")),
-                        (
-                            "count",
-                            json!({"type": "integer", "description": "number of bytes to extract", "default": 64}),
-                        ),
+                        ("count", opt_u32("number of bytes to extract", 64)),
                         ("out_path", opt_s("optional output path to write bytes")),
                         ("overwrite", json!({"type": "boolean", "default": true})),
                     ],
@@ -295,17 +309,21 @@ impl RbmServer {
             ),
             t(
                 "r2_flags",
-                "Read r2 flags, demangled/real flag names, or flagspaces. Supports regex filter and pagination for flag rows.",
+                "Read r2 flags, demangled/real flag names, or flagspaces. Supports glob/substring filter and pagination for flag rows.",
                 schema(
                     vec![
                         ("binary_path", req("absolute path to the binary")),
                         (
                             "mode",
-                            enum_s("flags mode", &["flags", "realnames", "flagspaces"]),
+                            enum_s_default(
+                                "flags mode",
+                                &["flags", "realnames", "flagspaces"],
+                                "flags",
+                            ),
                         ),
-                        ("filter", opt_s("optional regex filter")),
-                        ("offset", json!({"type": "integer", "default": 0})),
-                        ("limit", json!({"type": "integer", "default": 50})),
+                        ("filter", opt_s("optional glob/substring filter")),
+                        ("offset", opt_u32("result offset", 0)),
+                        ("limit", opt_u32("max results", 50)),
                     ],
                     vec!["binary_path"],
                 ),
@@ -341,7 +359,7 @@ impl RbmServer {
                         ("addr", req("address, symbol, or r2 flag")),
                         (
                             "count",
-                            json!({"type": "integer", "description": "number of opcodes to inspect, clamped to 1..500", "default": 8}),
+                            opt_u32_capped("number of opcodes to inspect", 8, 500),
                         ),
                     ],
                     vec!["binary_path", "addr"],
@@ -349,17 +367,23 @@ impl RbmServer {
             ),
             t(
                 "r2_disassemble",
-                "Disassemble a bounded instruction window from any address, symbol, or r2 flag; no function recognition is required unless function=true. format=json (default) returns structured pdj/pdfj rows; format=text returns raw pd/pdf text. Default count=32.",
+                "Disassemble a bounded instruction window from any address, symbol, or r2 flag. Set function=true for function-bounded disassembly when starting from a function symbol; otherwise count may walk into adjacent data. format=json (default) returns structured rows; format=text returns raw text. Default count=32.",
                 schema(
                     vec![
                         ("binary_path", req("absolute path to the binary")),
                         ("addr", req("address, symbol, or r2 flag")),
                         (
                             "count",
-                            json!({"type": "integer", "description": "number of instructions", "default": 32}),
+                            opt_u32("number of instructions; ignored when function=true", 32),
                         ),
-                        ("function", json!({"type": "boolean", "default": false})),
-                        ("format", enum_s("output format", &["json", "text"])),
+                        (
+                            "function",
+                            json!({"type": "boolean", "description": "use function-bounded pdf/pdfj instead of a fixed instruction window", "default": false}),
+                        ),
+                        (
+                            "format",
+                            enum_s_default("output format", &["json", "text"], "json"),
+                        ),
                     ],
                     vec!["binary_path", "addr"],
                 ),
@@ -373,13 +397,14 @@ impl RbmServer {
                         ("addr", req("address, symbol, or r2 flag")),
                         (
                             "count",
-                            json!({"type": "integer", "description": "number of bytes to hash, 1..16777216", "default": 64}),
+                            opt_u32_capped("number of bytes to hash", 64, 16 * 1024 * 1024),
                         ),
                         (
                             "algorithm",
-                            enum_s(
+                            enum_s_default(
                                 "hash or entropy algorithm",
                                 &["sha256", "sha1", "sha512", "md5", "crc32", "entropy"],
+                                "sha256",
                             ),
                         ),
                     ],
@@ -393,10 +418,7 @@ impl RbmServer {
                     vec![
                         ("binary_path", req("absolute path to the binary")),
                         ("addr", req("address, symbol, or r2 flag")),
-                        (
-                            "count",
-                            json!({"type": "integer", "description": "bytes to scan, 1..1048576", "default": 64}),
-                        ),
+                        ("count", opt_u32_capped("bytes to scan", 64, 1024 * 1024)),
                     ],
                     vec!["binary_path", "addr"],
                 ),
@@ -410,9 +432,10 @@ impl RbmServer {
                         ("addr", req("address, symbol, or r2 flag")),
                         (
                             "mode",
-                            enum_s(
+                            enum_s_default(
                                 "string decode mode",
                                 &["auto", "ascii", "utf16", "utf32", "pascal"],
+                                "auto",
                             ),
                         ),
                     ],
@@ -433,10 +456,7 @@ impl RbmServer {
                             ),
                         ),
                         ("pattern", req("search pattern")),
-                        (
-                            "limit",
-                            json!({"type": "integer", "description": "maximum results", "default": 50}),
-                        ),
+                        ("limit", opt_u32("maximum results", 50)),
                     ],
                     vec!["binary_path", "search_type", "pattern"],
                 ),
@@ -449,7 +469,7 @@ impl RbmServer {
                         ("binary_path", req("absolute path to the binary")),
                         (
                             "mode",
-                            enum_s(
+                            enum_s_default(
                                 "semantic search mode",
                                 &[
                                     "opcode_type",
@@ -460,16 +480,14 @@ impl RbmServer {
                                     "rop",
                                     "hex",
                                 ],
+                                "opcode_type",
                             ),
                         ),
                         (
                             "pattern",
                             req("search pattern or address, depending on mode"),
                         ),
-                        (
-                            "limit",
-                            json!({"type": "integer", "description": "maximum results", "default": 50}),
-                        ),
+                        ("limit", opt_u32("maximum results", 50)),
                     ],
                     vec!["binary_path", "pattern"],
                 ),
@@ -488,13 +506,10 @@ impl RbmServer {
                             ),
                         ),
                         ("pattern", req("search pattern")),
-                        (
-                            "limit",
-                            json!({"type": "integer", "description": "maximum search hits", "default": 20}),
-                        ),
+                        ("limit", opt_u32_capped("maximum search hits", 20, 50)),
                         (
                             "max_xrefs_per_hit",
-                            json!({"type": "integer", "description": "maximum xrefs per hit", "default": 12}),
+                            opt_u32_capped("maximum xrefs per hit", 12, 50),
                         ),
                     ],
                     vec!["binary_path", "search_type", "pattern"],
@@ -507,7 +522,10 @@ impl RbmServer {
                     vec![
                         ("binary_path", req("absolute path to the binary")),
                         ("addr", req("address, symbol, or r2 flag")),
-                        ("mode", enum_s("decompile mode", &["code", "meta"])),
+                        (
+                            "mode",
+                            enum_s_default("decompile mode", &["code", "meta"], "code"),
+                        ),
                     ],
                     vec!["binary_path", "addr"],
                 ),
@@ -521,7 +539,7 @@ impl RbmServer {
                         ("addr", req("address, symbol, or r2 flag")),
                         (
                             "mode",
-                            enum_s(
+                            enum_s_default(
                                 "function view mode",
                                 &[
                                     "analyze",
@@ -535,6 +553,7 @@ impl RbmServer {
                                     "refs",
                                     "cfg",
                                 ],
+                                "analyze",
                             ),
                         ),
                         ("include_asm", json!({"type": "boolean", "default": false})),
@@ -567,7 +586,11 @@ impl RbmServer {
                         ),
                         (
                             "format",
-                            enum_s("graph output format", &["json", "text", "dot", "mermaid"]),
+                            enum_s_default(
+                                "graph output format",
+                                &["json", "text", "dot", "mermaid"],
+                                "json",
+                            ),
                         ),
                         ("addr", opt_s("optional address, symbol, or r2 flag")),
                     ],
@@ -580,7 +603,10 @@ impl RbmServer {
                 schema(
                     vec![
                         ("binary_path", req("absolute path to the binary")),
-                        ("mode", enum_s("security mode", &["checksec", "entropy"])),
+                        (
+                            "mode",
+                            enum_s_default("security mode", &["checksec", "entropy"], "checksec"),
+                        ),
                     ],
                     vec!["binary_path"],
                 ),
@@ -592,7 +618,10 @@ impl RbmServer {
                     vec![
                         ("binary_path", req("absolute path to the binary")),
                         ("addr", req("address, symbol, or r2 flag")),
-                        ("direction", enum_s("xref direction", &["to", "from"])),
+                        (
+                            "direction",
+                            enum_s_default("xref direction", &["to", "from"], "to"),
+                        ),
                     ],
                     vec!["binary_path", "addr"],
                 ),
@@ -603,8 +632,8 @@ impl RbmServer {
                 schema(
                     vec![
                         ("binary_path", req("absolute path to the binary")),
-                        ("offset", json!({"type": "integer", "default": 0})),
-                        ("limit", json!({"type": "integer", "default": 50})),
+                        ("offset", opt_u32("result offset", 0)),
+                        ("limit", opt_u32("max results", 50)),
                     ],
                     vec!["binary_path"],
                 ),
@@ -618,15 +647,13 @@ impl RbmServer {
                         ("addr", req("address, symbol, or r2 flag")),
                         (
                             "mode",
-                            enum_s(
+                            enum_s_default(
                                 "ESIL access mode",
                                 &["instructions", "bytes", "block", "function"],
+                                "instructions",
                             ),
                         ),
-                        (
-                            "count",
-                            json!({"type": "integer", "description": "instruction or byte count", "default": 32}),
-                        ),
+                        ("count", opt_u32("instruction or byte count", 32)),
                     ],
                     vec!["binary_path", "addr"],
                 ),
@@ -644,7 +671,7 @@ impl RbmServer {
             ),
             t(
                 "r2_cmd",
-                "Run a single radare2 query command and return guarded output. Prefer named rbinr2 tools when available.",
+                "Run a single read-only radare2 query command and return guarded output. Rejects separators, shell escapes, writes, seeks, and eval-setting mutations. Prefer named rbinr2 tools when available.",
                 schema(
                     vec![
                         ("binary_path", req("absolute path to the binary")),
@@ -660,10 +687,13 @@ impl RbmServer {
                     vec![
                         ("binary_path", req("absolute path to the binary")),
                         ("addr", req("address, symbol, or r2 flag")),
-                        ("direction", opt_s("trace direction: forward or backward")),
+                        (
+                            "direction",
+                            enum_s_default("trace direction", &["forward", "backward"], "backward"),
+                        ),
                         (
                             "max_depth",
-                            json!({"type": "integer", "description": "maximum traversal depth", "default": 5}),
+                            opt_u32_capped("maximum traversal depth", 5, 15),
                         ),
                     ],
                     vec!["binary_path", "addr"],
@@ -671,23 +701,26 @@ impl RbmServer {
             ),
             t(
                 "r2_value_trace",
-                "Trace a seeded register value through a bounded radare2 disassembly window. Tracks register aliases, stack slots, memory saves/restores, mutations, and calls/jumps reached by the seed.",
+                "Trace a seeded register or memory value through a bounded radare2 disassembly window. Tracks register aliases, stack slots, memory saves/restores, mutations, and calls/jumps reached by the seed. Provide seed_register or seed_memory.",
                 schema(
                     vec![
                         ("binary_path", req("absolute path to the binary")),
                         ("start_addr", req("start address to scan")),
-                        ("seed_register", req("register carrying the value")),
+                        (
+                            "seed_register",
+                            opt_s("optional register carrying the value"),
+                        ),
                         ("seed_memory", opt_s("optional memory/stack slot")),
                         ("seed_value", opt_s("optional concrete value")),
                         ("arch", opt_s("r2 architecture override")),
-                        ("bits", json!({"type": "integer", "default": 0})),
+                        ("bits", opt_u32("r2 bitness override; 0 uses r2 default", 0)),
                         (
                             "max_instructions",
-                            json!({"type": "integer", "default": 300}),
+                            opt_u32("max instructions to inspect", 300),
                         ),
-                        ("max_events", json!({"type": "integer", "default": 100})),
+                        ("max_events", opt_u32("max events to return", 100)),
                     ],
-                    vec!["binary_path", "start_addr", "seed_register"],
+                    vec!["binary_path", "start_addr"],
                 ),
             ),
             t(
@@ -700,7 +733,7 @@ impl RbmServer {
                         ("driver_register", opt_s("register carrying DRIVER_OBJECT*")),
                         (
                             "max_instructions",
-                            json!({"type": "integer", "default": 220}),
+                            opt_u32("max instructions to inspect", 220),
                         ),
                     ],
                     vec!["binary_path", "init_addr"],
@@ -715,13 +748,16 @@ impl RbmServer {
                         ("table_addr", req("address of the pointer table")),
                         (
                             "entry_count",
-                            json!({"type": "integer", "description": "number of pointer entries"}),
+                            serde_json::json!({"type": "integer", "format": "uint32", "description": "number of pointer entries", "minimum": 1}),
                         ),
-                        ("pointer_size", json!({"type": "integer", "default": 4})),
-                        ("target_bytes", json!({"type": "integer", "default": 512})),
+                        ("pointer_size", opt_u32("pointer size in bytes", 4)),
+                        (
+                            "target_bytes",
+                            opt_u32("bytes to inspect at each target", 512),
+                        ),
                         (
                             "max_instructions",
-                            json!({"type": "integer", "default": 120}),
+                            opt_u32("max instructions to inspect", 120),
                         ),
                     ],
                     vec!["binary_path", "table_addr", "entry_count"],
@@ -735,16 +771,16 @@ impl RbmServer {
                         ("binary_path", req("absolute path to the binary")),
                         ("start_addr", req("start address to scan")),
                         ("arch", opt_s("r2 architecture override")),
-                        ("bits", json!({"type": "integer", "default": 0})),
+                        ("bits", opt_u32("r2 bitness override; 0 uses r2 default", 0)),
                         ("range_end", opt_s("exclusive end address")),
                         ("stop_addresses", opt_s("stop addresses")),
                         ("state_register", opt_s("state/base register")),
                         ("marker_constants", opt_s("marker constants")),
                         (
                             "max_instructions",
-                            json!({"type": "integer", "default": 800}),
+                            opt_u32("max instructions to inspect", 800),
                         ),
-                        ("max_events", json!({"type": "integer", "default": 80})),
+                        ("max_events", opt_u32("max events to return", 80)),
                     ],
                     vec!["binary_path", "start_addr"],
                 ),
@@ -757,14 +793,17 @@ impl RbmServer {
                         ("binary_path", req("absolute path to the binary")),
                         ("start_addr", req("start address to scan")),
                         ("arch", opt_s("r2 architecture override")),
-                        ("bits", json!({"type": "integer", "default": 0})),
+                        ("bits", opt_u32("r2 bitness override; 0 uses r2 default", 0)),
                         ("range_end", opt_s("exclusive end address")),
                         (
                             "max_instructions",
-                            json!({"type": "integer", "default": 1200}),
+                            opt_u32("max instructions to inspect", 1200),
                         ),
-                        ("max_steps", json!({"type": "integer", "default": 20000})),
-                        ("min_string_len", json!({"type": "integer", "default": 4})),
+                        ("max_steps", opt_u32("max emulation steps", 20000)),
+                        (
+                            "min_string_len",
+                            opt_u32("minimum decoded string length", 4),
+                        ),
                     ],
                     vec!["binary_path", "start_addr"],
                 ),
@@ -777,7 +816,7 @@ impl RbmServer {
                         ("binary_path", req("absolute path to the binary")),
                         ("start_addr", req("start address to scan")),
                         ("arch", opt_s("r2 architecture override")),
-                        ("bits", json!({"type": "integer", "default": 0})),
+                        ("bits", opt_u32("r2 bitness override; 0 uses r2 default", 0)),
                         ("range_end", opt_s("exclusive end address")),
                         ("root_register", opt_s("root register")),
                         ("root_name", opt_s("root register symbol name")),
@@ -787,9 +826,9 @@ impl RbmServer {
                         ("ignore_stack", json!({"type": "boolean", "default": false})),
                         (
                             "max_instructions",
-                            json!({"type": "integer", "default": 800}),
+                            opt_u32("max instructions to inspect", 800),
                         ),
-                        ("max_rows", json!({"type": "integer", "default": 60})),
+                        ("max_rows", opt_u32("max rows to return", 60)),
                     ],
                     vec!["binary_path", "start_addr"],
                 ),
@@ -842,6 +881,23 @@ impl RbmServer {
     fn ok_json(&self, value: impl serde::Serialize) -> Result<CallToolResult, ErrorData> {
         let text = serde_json::to_string(&value).map_err(|e| err(e.to_string()))?;
         Ok(CallToolResult::success(vec![Content::text(text)]))
+    }
+
+    fn ok_json_guarded(
+        &self,
+        label: &str,
+        value: impl serde::Serialize,
+    ) -> Result<CallToolResult, ErrorData> {
+        let text = serde_json::to_string(&value).map_err(|e| err(e.to_string()))?;
+        let guarded = OutputGuard::new(self.output_guard.overflow_dir().to_path_buf())
+            .with_max_inline_chars(R2_CMD_MAX_INLINE_CHARS)
+            .with_ttl(self.output_guard.ttl())
+            .guard_str(label, text)
+            .map_err(|e| err(e.to_string()))?;
+        match guarded {
+            GuardedOutput::Inline(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
+            GuardedOutput::Overflow(summary) => self.ok_json(summary),
+        }
     }
 
     async fn session_for(&self, binary_path: &str) -> Result<Arc<rbm_r2::Session>, ErrorData> {
@@ -913,9 +969,14 @@ impl ServerHandler for RbmServer {
 
         match name {
             "r2_open" => {
+                let binary_path = self.s(&params, "binary_path");
+                let force_reload = self.opt_bool(&params, "force_reload").unwrap_or(false);
+                if force_reload {
+                    let _ = self.r2.close(&binary_path);
+                }
                 let outcome = self
                     .r2
-                    .open(&self.s(&params, "binary_path"))
+                    .open(&binary_path)
                     .await
                     .map_err(|e| err(e.to_string()))?;
                 self.ok_json(outcome)
@@ -931,7 +992,11 @@ impl ServerHandler for RbmServer {
 
             "r2_sessions" => {
                 let paths = self.r2.list();
-                self.ok_json(paths)
+                self.ok_json(serde_json::json!({
+                    "schema": "rbm.r2.sessions.v0",
+                    "count": paths.len(),
+                    "sessions": paths,
+                }))
             }
 
             "r2_metadata" => {
@@ -1031,7 +1096,20 @@ impl ServerHandler for RbmServer {
                 ) {
                     let offset = self.opt_usize(&params, "offset").unwrap_or(0);
                     let limit = self.opt_usize(&params, "limit").unwrap_or(0);
-                    result = rbm_r2::filters::paginate(result, offset, limit);
+                    let (paged, total_matched, returned, truncated) =
+                        paginate_with_counts(result, offset, limit);
+                    result = paged;
+                    return self.ok_json(serde_json::json!({
+                        "schema": "rbm.r2.metadata.v0",
+                        "binary_path": binary_path,
+                        "mode": mode,
+                        "offset": offset,
+                        "limit": limit,
+                        "total_matched": total_matched,
+                        "returned": returned,
+                        "truncated": truncated,
+                        "result": result,
+                    }));
                 }
 
                 self.ok_json(serde_json::json!({
@@ -1107,12 +1185,18 @@ impl ServerHandler for RbmServer {
                 self.ok_json(result)
             }
 
-            "r2_imports_grouped" => self
-                .with_session_json(&self.s(&params, "binary_path"), |session| async move {
-                    rbm_r2::symbols::imports_grouped(&session).await
-                })
-                .await
-                .map(|s| CallToolResult::success(vec![Content::text(s)])),
+            "r2_imports_grouped" => {
+                let binary_path = self.s(&params, "binary_path");
+                let session = self.session_for(&binary_path).await?;
+                let result = rbm_r2::symbols::imports_grouped(&session)
+                    .await
+                    .map_err(|e| err(e.to_string()))?;
+                self.ok_json(serde_json::json!({
+                    "schema": "rbm.r2.imports_grouped.v0",
+                    "binary_path": binary_path,
+                    "result": result,
+                }))
+            }
 
             "r2_plugins" => {
                 let session = self.session_for(&self.s(&params, "binary_path")).await?;
@@ -1125,13 +1209,24 @@ impl ServerHandler for RbmServer {
                 self.ok_json(result)
             }
 
-            "r2_get_bytes" => self
-                .with_session_raw(&self.s(&params, "binary_path"), |session| async move {
-                    let count = self.opt_u64(&params, "count").unwrap_or(64);
-                    rbm_r2::disasm::get_bytes(&session, &self.s(&params, "addr"), count).await
-                })
-                .await
-                .map(|s| CallToolResult::success(vec![Content::text(s)])),
+            "r2_get_bytes" => {
+                let binary_path = self.s(&params, "binary_path");
+                let addr = self.s(&params, "addr");
+                let count = self.opt_u64(&params, "count").unwrap_or(64);
+                let session = self.session_for(&binary_path).await?;
+                let hex = rbm_r2::disasm::get_bytes(&session, &addr, count)
+                    .await
+                    .map_err(|e| err(e.to_string()))?;
+                let compact_hex: String = hex.chars().filter(|c| !c.is_whitespace()).collect();
+                self.ok_json(serde_json::json!({
+                    "schema": "rbm.r2.get_bytes.v0",
+                    "binary_path": binary_path,
+                    "addr": addr,
+                    "requested_count": count,
+                    "byte_count": compact_hex.len() / 2,
+                    "hex": compact_hex,
+                }))
+            }
 
             "r2_extract_bytes" => {
                 let binary_path = self.s(&params, "binary_path");
@@ -1295,19 +1390,22 @@ impl ServerHandler for RbmServer {
                 .await
                 .map(|s| CallToolResult::success(vec![Content::text(s)])),
 
-            "r2_find" => self
-                .with_session_json(&self.s(&params, "binary_path"), |session| async move {
-                    let limit = self.opt_usize(&params, "limit").unwrap_or(50);
-                    rbm_r2::search::find(
-                        &session,
-                        &self.s(&params, "search_type"),
-                        &self.s(&params, "pattern"),
-                        limit,
-                    )
-                    .await
-                })
+            "r2_find" => {
+                let binary_path = self.s(&params, "binary_path");
+                let session = self.session_for(&binary_path).await?;
+                let mut result = rbm_r2::search::find(
+                    &session,
+                    &self.s(&params, "search_type"),
+                    &self.s(&params, "pattern"),
+                    self.opt_usize(&params, "limit").unwrap_or(50),
+                )
                 .await
-                .map(|s| CallToolResult::success(vec![Content::text(s)])),
+                .map_err(|e| err(e.to_string()))?;
+                if let Some(result) = result.as_object_mut() {
+                    result.insert("binary_path".to_string(), serde_json::json!(binary_path));
+                }
+                self.ok_json(result)
+            }
 
             "r2_semantic_search" => self
                 .with_session_json(&self.s(&params, "binary_path"), |session| async move {
@@ -1463,15 +1561,33 @@ impl ServerHandler for RbmServer {
 
             "r2_graph" => {
                 let session = self.session_for(&self.s(&params, "binary_path")).await?;
+                let kind = self.opt_s(&params, "kind").unwrap_or("function");
+                let addr = self.opt_s(&params, "addr");
+                // Per-kind addr validation: function, callgraph, imports, refs, xrefs, and
+                // data_refs require an addr. Without it the agent gets a massive global graph.
+                let needs_addr = matches!(
+                    kind.trim(),
+                    "" | "function" | "cfg" | "agf"
+                        | "callgraph" | "calls" | "agc"
+                        | "imports" | "agi"
+                        | "refs" | "references" | "agr"
+                        | "xrefs" | "crossrefs" | "agx"
+                        | "data_refs" | "data" | "aga"
+                );
+                if needs_addr && addr.is_none() {
+                    return Err(err(format!(
+                        "r2_graph kind {kind:?} requires an addr parameter; pass an address, symbol, or r2 flag"
+                    )));
+                }
                 let result = rbm_r2::disasm::graph(
                     &session,
-                    self.opt_s(&params, "kind").unwrap_or("function"),
+                    kind,
                     self.opt_s(&params, "format").unwrap_or("json"),
-                    self.opt_s(&params, "addr"),
+                    addr,
                 )
                 .await
                 .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
+                self.ok_json_guarded("r2_graph", result)
             }
 
             "r2_security" => {
@@ -1513,7 +1629,15 @@ impl ServerHandler for RbmServer {
                 let result = rbm_r2::disasm::xrefs(&session, &addr, dir)
                     .await
                     .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
+                let count = result.as_array().map_or(0, Vec::len);
+                self.ok_json(serde_json::json!({
+                    "schema": "rbm.r2.xrefs.v0",
+                    "binary_path": binary_path,
+                    "addr": addr,
+                    "direction": direction,
+                    "count": count,
+                    "xrefs": result,
+                }))
             }
 
             "r2_global_xrefs" => {
@@ -1769,6 +1893,14 @@ fn find_xref_item_addr(item: &Value) -> String {
     String::new()
 }
 
+fn paginate_with_counts(value: Value, offset: usize, limit: usize) -> (Value, usize, usize, bool) {
+    let total = value.as_array().map_or(0, Vec::len);
+    let paged = rbm_r2::filters::paginate(value, offset, limit);
+    let returned = paged.as_array().map_or(0, Vec::len);
+    let truncated = limit != 0 && total > offset.saturating_add(returned);
+    (paged, total, returned, truncated)
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
@@ -1817,6 +1949,24 @@ mod tests {
 
         let mode = &tool.input_schema["properties"]["mode"];
         assert_eq!(mode["enum"], serde_json::json!(["code", "meta"]));
+    }
+
+    #[test]
+    fn value_trace_schema_allows_memory_only_seed() {
+        let tools = RbmServer::build_tools();
+        let tool = tools
+            .iter()
+            .find(|tool| tool.name == "r2_value_trace")
+            .expect("r2_value_trace tool");
+
+        assert_eq!(
+            tool.input_schema["required"],
+            serde_json::json!(["binary_path", "start_addr"])
+        );
+        assert_eq!(
+            tool.input_schema["properties"]["seed_register"]["type"],
+            serde_json::json!("string")
+        );
     }
 
     #[test]

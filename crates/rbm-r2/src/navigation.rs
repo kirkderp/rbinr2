@@ -1,7 +1,8 @@
 use rbm_core::{ToolError, ToolResult};
 use serde_json::{Value, json};
 
-use crate::filters::{build_filter_regex, paginate};
+use crate::search::glob_or_substring_match;
+use crate::filters::paginate;
 use crate::search::{validate_hex_pattern, validate_search_pattern};
 use crate::session::Session;
 
@@ -43,7 +44,7 @@ fn filter_flag_rows(value: Value, filter: Option<&str>) -> ToolResult<Value> {
     let Some(pattern) = filter.filter(|s| !s.is_empty()) else {
         return Ok(value);
     };
-    let regex = build_filter_regex(pattern)?;
+    let needle = pattern.to_lowercase();
     let Value::Array(rows) = value else {
         return Ok(value);
     };
@@ -53,7 +54,7 @@ fn filter_flag_rows(value: Value, filter: Option<&str>) -> ToolResult<Value> {
                 ["name", "realname", "flagname", "demname", "space"]
                     .iter()
                     .filter_map(|key| row.get(*key).and_then(Value::as_str))
-                    .any(|s| regex.is_match(s))
+                    .any(|s| glob_or_substring_match(&needle, &s.to_lowercase()))
             })
             .collect(),
     ))
@@ -185,7 +186,7 @@ pub async fn semantic_search(
             format!("/vj {pattern}")
         }
         "refs" => {
-            crate::disasm::validate_addr(pattern)?;
+            crate::disasm::validate_value("pattern", pattern)?;
             format!("/rj {pattern}")
         }
         "rop" => {

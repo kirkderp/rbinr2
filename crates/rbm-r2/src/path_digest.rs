@@ -5,7 +5,7 @@ use rbm_core::{ToolError, ToolResult};
 use regex::Regex;
 use serde_json::{Value, json};
 
-use crate::disasm::validate_addr;
+use crate::disasm::{validate_addr, validate_value};
 use crate::session::Session;
 
 const DEFAULT_MAX_INSTRUCTIONS: u32 = 800;
@@ -38,24 +38,25 @@ pub async fn path_digest(
 ) -> ToolResult<Value> {
     validate_addr(start_addr)?;
     if let Some(end) = options.range_end {
-        validate_addr(end)?;
+        validate_value("range_end", end)?;
     }
     if let Some(stops) = options.stop_addresses {
         validate_stop_addresses(stops)?;
     }
     if let Some(arch) = options.arch {
         validate_r2_setting("arch", arch)?;
-        session.cmd(format!("e asm.arch={arch}")).await?;
     }
-    if options.bits != 0 {
-        validate_bits(options.bits)?;
-        session.cmd(format!("e asm.bits={}", options.bits)).await?;
-    }
+    validate_bits(options.bits)?;
 
     let max_instructions = clamp_instructions(options.max_instructions);
-    let ops = session
-        .cmdj(format!("pdj {max_instructions} @ {start_addr}"))
+    let snapshot = session
+        .apply_asm_settings(options.arch, options.bits)
         .await?;
+    let ops_result = session
+        .cmdj(format!("pdj {max_instructions} @ {start_addr}"))
+        .await;
+    session.restore_asm_settings(snapshot).await?;
+    let ops = ops_result?;
     let ops = match ops {
         Value::Array(arr) => arr,
         _ => Vec::new(),
@@ -408,7 +409,7 @@ struct ImmediateWrite {
 /// # Errors
 ///
 /// Returns an error if an entry is missing a separator, has a nonnumeric value,
-/// or has an empty marker name.
+/// or contains an invalid marker name.
 pub fn parse_marker_constants(input: &str) -> ToolResult<BTreeMap<String, String>> {
     let mut markers = BTreeMap::new();
     for raw in input.split([',', '\n']) {
@@ -430,9 +431,7 @@ pub fn parse_marker_constants(input: &str) -> ToolResult<BTreeMap<String, String
             )));
         };
         let name = name.trim();
-        if name.is_empty() {
-            return Err(ToolError::invalid("marker constant name is empty"));
-        }
+        validate_symbol_name("marker name", name)?;
         markers.insert(format!("{parsed:#x}"), name.to_string());
     }
     Ok(markers)
@@ -479,9 +478,9 @@ fn validate_r2_setting(label: &str, value: &str) -> ToolResult<()> {
 
 fn validate_bits(bits: u32) -> ToolResult<()> {
     match bits {
-        8 | 16 | 32 | 64 => Ok(()),
+        0 | 8 | 16 | 32 | 64 => Ok(()),
         other => Err(ToolError::invalid(format!(
-            "bits must be 8, 16, 32, or 64, got {other}"
+            "bits must be one of 0, 8, 16, 32, 64; got {other}"
         ))),
     }
 }
@@ -495,6 +494,20 @@ fn validate_register_name(register: &str) -> ToolResult<()> {
     } else {
         Err(ToolError::invalid(format!(
             "state_register must be a register-like token, got {register:?}"
+        )))
+    }
+}
+
+fn validate_symbol_name(label: &str, value: &str) -> ToolResult<()> {
+    if !value.is_empty()
+        && value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
+    {
+        Ok(())
+    } else {
+        Err(ToolError::invalid(format!(
+            "{label} must be a simple symbol token, got {value:?}"
         )))
     }
 }
@@ -747,4 +760,22 @@ fn utf16le_preview(bytes: &[u8]) -> String {
             }
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_marker_constants, validate_bits};
+
+    #[test]
+    fn bits_zero_uses_r2_default() {
+        assert!(validate_bits(0).is_ok());
+        assert!(validate_bits(32).is_ok());
+        assert!(validate_bits(7).is_err());
+    }
+
+    #[test]
+    fn marker_constants_reject_non_symbol_names() {
+        assert!(parse_marker_constants("0x1234=good.marker-1").is_ok());
+        assert!(parse_marker_constants("0x1234=bad marker").is_err());
+    }
 }

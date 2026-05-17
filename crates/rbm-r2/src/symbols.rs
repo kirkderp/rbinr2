@@ -1,7 +1,7 @@
 use rbm_core::ToolResult;
 use serde_json::{Map, Value, json};
 
-use crate::filters::build_filter_regex;
+use crate::search::glob_or_substring_match;
 use crate::session::Session;
 
 /// Return r2 import metadata.
@@ -61,13 +61,20 @@ pub async fn strings_all(session: &Session, min_length: usize) -> ToolResult<Val
     Ok(filter_by_min_length(raw, min_length))
 }
 
-/// Filter symbol-like metadata by name.
+/// Filter symbol-like metadata by name using glob/substring matching.
+///
+/// Consistent with `r2_find`'s function filter — supports `*`, `?` globs and
+/// substring matching. This is intentional: agents should get predictable
+/// filter behavior across tools without regex parse errors.
 ///
 /// # Errors
 ///
-/// Returns an error if `pattern` is not a valid regular expression.
+/// Returns an error if `pattern` is empty.
 pub fn filter_by_name(value: Value, pattern: &str) -> ToolResult<Value> {
-    let regex = build_filter_regex(pattern)?;
+    if pattern.is_empty() {
+        return Ok(value);
+    }
+    let needle = pattern.to_lowercase();
     let Value::Array(arr) = value else {
         return Ok(value);
     };
@@ -78,28 +85,32 @@ pub fn filter_by_name(value: Value, pattern: &str) -> ToolResult<Value> {
                 .get("name")
                 .and_then(Value::as_str)
                 .or_else(|| item.get("realname").and_then(Value::as_str))
-                .unwrap_or("");
-            regex.is_match(name)
+                .unwrap_or("")
+                .to_lowercase();
+            glob_or_substring_match(&needle, &name)
         })
         .collect();
     Ok(Value::Array(filtered))
 }
 
-/// Filter string metadata by string content.
+/// Filter string metadata by string content using glob/substring matching.
 ///
 /// # Errors
 ///
-/// Returns an error if `pattern` is not a valid regular expression.
+/// Returns an error if `pattern` is empty.
 pub fn filter_by_string_content(value: Value, pattern: &str) -> ToolResult<Value> {
-    let regex = build_filter_regex(pattern)?;
+    if pattern.is_empty() {
+        return Ok(value);
+    }
+    let needle = pattern.to_lowercase();
     let Value::Array(arr) = value else {
         return Ok(value);
     };
     let filtered: Vec<Value> = arr
         .into_iter()
         .filter(|item| {
-            let s = item.get("string").and_then(Value::as_str).unwrap_or("");
-            regex.is_match(s)
+            let s = item.get("string").and_then(Value::as_str).unwrap_or("").to_lowercase();
+            glob_or_substring_match(&needle, &s)
         })
         .collect();
     Ok(Value::Array(filtered))

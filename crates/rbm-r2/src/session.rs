@@ -1,3 +1,4 @@
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::thread;
@@ -29,12 +30,27 @@ enum SessionCmd {
 pub struct Session {
     binary_path: PathBuf,
     tx: mpsc::UnboundedSender<SessionCmd>,
+    tool_timeout: Duration,
+}
+
+#[derive(Debug, Default)]
+pub struct AsmSettingsSnapshot {
+    arch: Option<String>,
+    bits: Option<String>,
 }
 
 impl Session {
     #[must_use]
     pub fn binary_path(&self) -> &Path {
         &self.binary_path
+    }
+
+    /// Request shutdown of the r2 worker thread.
+    ///
+    /// This is explicit so r2_close can stop a session even if concurrent
+    /// tool handlers still hold cloned Arc<Session> references.
+    pub fn shutdown(&self) -> bool {
+        self.tx.send(SessionCmd::Shutdown).is_ok()
     }
 
     /// Run a text r2 command on this session.
@@ -51,8 +67,17 @@ impl Session {
                 reply: reply_tx,
             })
             .map_err(|_| ToolError::backend("r2", "session worker channel closed"))?;
-        reply_rx
+        tokio::time::timeout(self.tool_timeout, reply_rx)
             .await
+            .map_err(|_| {
+                ToolError::backend(
+                    "r2",
+                    format!(
+                        "r2 command timed out after {}s",
+                        self.tool_timeout.as_secs()
+                    ),
+                )
+            })?
             .map_err(|_| ToolError::backend("r2", "session reply channel dropped"))?
             .map_err(|e| ToolError::backend("r2", e))
     }
@@ -71,13 +96,54 @@ impl Session {
                 reply: reply_tx,
             })
             .map_err(|_| ToolError::backend("r2", "session worker channel closed"))?;
-        reply_rx
+        tokio::time::timeout(self.tool_timeout, reply_rx)
             .await
+            .map_err(|_| {
+                ToolError::backend(
+                    "r2",
+                    format!(
+                        "r2 command timed out after {}s",
+                        self.tool_timeout.as_secs()
+                    ),
+                )
+            })?
             .map_err(|_| ToolError::backend("r2", "session reply channel dropped"))?
             .map_err(|e| ToolError::backend("r2", e))
     }
 
-    async fn spawn(binary_path: PathBuf) -> ToolResult<Arc<Self>> {
+    /// Apply temporary disassembly settings and return the previous values.
+    ///
+    /// Call restore_asm_settings before returning to keep persistent sessions
+    /// from leaking architecture overrides into later tool calls.
+    pub async fn apply_asm_settings(
+        &self,
+        arch: Option<&str>,
+        bits: u32,
+    ) -> ToolResult<AsmSettingsSnapshot> {
+        let mut snapshot = AsmSettingsSnapshot::default();
+        if let Some(arch) = arch {
+            snapshot.arch = Some(self.cmd("e asm.arch").await?.trim().to_string());
+            self.cmd(format!("e asm.arch={arch}")).await?;
+        }
+        if bits != 0 {
+            snapshot.bits = Some(self.cmd("e asm.bits").await?.trim().to_string());
+            self.cmd(format!("e asm.bits={bits}")).await?;
+        }
+        Ok(snapshot)
+    }
+
+    /// Restore settings captured by apply_asm_settings.
+    pub async fn restore_asm_settings(&self, snapshot: AsmSettingsSnapshot) -> ToolResult<()> {
+        if let Some(bits) = snapshot.bits {
+            self.cmd(format!("e asm.bits={bits}")).await?;
+        }
+        if let Some(arch) = snapshot.arch {
+            self.cmd(format!("e asm.arch={arch}")).await?;
+        }
+        Ok(())
+    }
+
+    async fn spawn(binary_path: PathBuf, tool_timeout: Duration) -> ToolResult<Arc<Self>> {
         let (tx, mut rx) = mpsc::unbounded_channel::<SessionCmd>();
         let (init_tx, init_rx) = oneshot::channel::<Result<(), String>>();
         let thread_path = binary_path.clone();
@@ -134,7 +200,12 @@ impl Session {
             .map_err(|_| ToolError::backend("r2", "session init channel dropped"))?
             .map_err(|e| ToolError::backend("r2", e))?;
 
-        Ok(Self { binary_path, tx }.into())
+        Ok(Self {
+            binary_path,
+            tx,
+            tool_timeout,
+        }
+        .into())
     }
 }
 
@@ -201,7 +272,9 @@ pub struct CloseOutcome {
 
 pub struct SessionManager {
     sessions: DashMap<PathBuf, Arc<Session>>,
+    aliases: DashMap<PathBuf, PathBuf>,
     open_timeout: Duration,
+    tool_timeout: Duration,
 }
 
 impl Default for SessionManager {
@@ -215,7 +288,9 @@ impl SessionManager {
     pub fn new() -> Self {
         Self {
             sessions: DashMap::new(),
+            aliases: DashMap::new(),
             open_timeout: DEFAULT_OPEN_TIMEOUT,
+            tool_timeout: Duration::from_secs(30),
         }
     }
 
@@ -223,8 +298,16 @@ impl SessionManager {
     pub fn with_open_timeout(open_timeout: Duration) -> Self {
         Self {
             sessions: DashMap::new(),
+            aliases: DashMap::new(),
             open_timeout,
+            tool_timeout: Duration::from_secs(30),
         }
+    }
+
+    /// Set the per-tool r2 command timeout.
+    pub fn with_tool_timeout(mut self, tool_timeout: Duration) -> Self {
+        self.tool_timeout = tool_timeout;
+        self
     }
 
     #[must_use]
@@ -262,14 +345,15 @@ impl SessionManager {
 
     async fn ensure_session(&self, input: &Path) -> ToolResult<(Arc<Session>, PathBuf, bool)> {
         let canonical =
-            std::fs::canonicalize(input).map_err(|e| ToolError::io(input.to_path_buf(), e))?;
+            fs::canonicalize(input).map_err(|e| ToolError::io(input.to_path_buf(), e))?;
 
         if let Some(existing) = self.lookup(&canonical) {
+            self.remember_alias(input, &canonical);
             return Ok((existing, canonical, false));
         }
 
         let new_session =
-            tokio::time::timeout(self.open_timeout, Session::spawn(canonical.clone()))
+            tokio::time::timeout(self.open_timeout, Session::spawn(canonical.clone(), self.tool_timeout))
                 .await
                 .map_err(|_| {
                     ToolError::backend(
@@ -290,22 +374,29 @@ impl SessionManager {
                     format!("session raced and vanished: {}", canonical.display()),
                 )
             })?;
+            self.remember_alias(input, &canonical);
             return Ok((existing, canonical, false));
         }
 
+        self.remember_alias(input, &canonical);
         Ok((new_session_clone, canonical, true))
     }
 
     /// Close a tracked r2 session for a binary path.
     ///
-    /// # Errors
-    ///
-    /// This currently does not return an error; the `ToolResult` return type is
-    /// retained for API symmetry with other session operations.
     pub fn close(&self, binary_path: impl AsRef<Path>) -> ToolResult<CloseOutcome> {
         let input = binary_path.as_ref().to_path_buf();
-        let key = std::fs::canonicalize(&input).unwrap_or_else(|_| input.clone());
-        let closed = self.sessions.remove(&key).is_some();
+        let key = self.resolve_close_key(&input);
+        if let Some(session) = self.lookup(&key) {
+            if !session.shutdown() {
+                tracing::warn!("session shutdown channel closed for {}", key.display());
+            }
+        }
+        let removed = self.sessions.remove(&key);
+        if removed.is_some() {
+            self.forget_aliases(&key);
+        }
+        let closed = removed.is_some();
         Ok(CloseOutcome {
             closed,
             binary: key,
@@ -314,6 +405,36 @@ impl SessionManager {
 
     fn lookup(&self, canonical: &Path) -> Option<Arc<Session>> {
         self.sessions.get(canonical).map(|r| r.clone())
+    }
+
+    fn remember_alias(&self, input: &Path, canonical: &Path) {
+        self.aliases
+            .insert(input.to_path_buf(), canonical.to_path_buf());
+    }
+
+    fn resolve_close_key(&self, input: &Path) -> PathBuf {
+        fs::canonicalize(input).unwrap_or_else(|_| {
+            self.aliases
+                .get(input)
+                .map_or_else(|| input.to_path_buf(), |alias| alias.clone())
+        })
+    }
+
+    fn forget_aliases(&self, canonical: &Path) {
+        let aliases: Vec<PathBuf> = self
+            .aliases
+            .iter()
+            .filter_map(|entry| {
+                if entry.value().as_path() == canonical {
+                    Some(entry.key().clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        for alias in aliases {
+            self.aliases.remove(&alias);
+        }
     }
 
     fn try_install(&self, canonical: PathBuf, session: Arc<Session>) -> bool {
@@ -345,7 +466,7 @@ impl SessionManager {
 
     pub fn get(&self, binary_path: impl AsRef<Path>) -> Option<Arc<Session>> {
         let raw = binary_path.as_ref();
-        let key = std::fs::canonicalize(raw).ok()?;
+        let key = fs::canonicalize(raw).ok()?;
         self.sessions.get(&key).map(|r| r.clone())
     }
 }

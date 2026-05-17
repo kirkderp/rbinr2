@@ -1,7 +1,8 @@
 use rbm_core::{ToolError, ToolResult};
 use serde_json::{Value, json};
 
-use crate::filters::{build_filter_regex, paginate};
+use crate::search::glob_or_substring_match;
+use crate::filters::paginate;
 use crate::session::Session;
 
 /// Validate a type name or format before interpolating it into an r2 command.
@@ -135,7 +136,7 @@ fn filter_named_rows(value: Value, filter: Option<&str>) -> ToolResult<Value> {
     let Some(pattern) = filter.filter(|s| !s.is_empty()) else {
         return Ok(value);
     };
-    let regex = build_filter_regex(pattern)?;
+    let needle = pattern.to_lowercase();
     let Value::Array(rows) = value else {
         return Ok(value);
     };
@@ -145,7 +146,7 @@ fn filter_named_rows(value: Value, filter: Option<&str>) -> ToolResult<Value> {
                 ["name", "type"]
                     .iter()
                     .filter_map(|key| row.get(*key).and_then(Value::as_str))
-                    .any(|s| regex.is_match(s))
+                    .any(|s| glob_or_substring_match(&needle, &s.to_lowercase()))
             })
             .collect(),
     ))

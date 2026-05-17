@@ -348,17 +348,18 @@ pub async fn trace_seed_value(
     }
     if let Some(arch) = options.arch {
         validate_r2_setting("arch", arch)?;
-        session.cmd(format!("e asm.arch={arch}")).await?;
     }
-    if options.bits != 0 {
-        validate_bits(options.bits)?;
-        session.cmd(format!("e asm.bits={}", options.bits)).await?;
-    }
+    validate_bits(options.bits)?;
 
     let max_instructions = clamp_value_trace_instructions(options.max_instructions);
-    let ops = session
-        .cmdj(format!("pdj {max_instructions} @ {start_addr}"))
+    let snapshot = session
+        .apply_asm_settings(options.arch, options.bits)
         .await?;
+    let ops_result = session
+        .cmdj(format!("pdj {max_instructions} @ {start_addr}"))
+        .await;
+    session.restore_asm_settings(snapshot).await?;
+    let ops = ops_result?;
     let ops = match ops {
         Value::Array(arr) => arr,
         _ => Vec::new(),
