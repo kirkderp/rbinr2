@@ -1195,7 +1195,7 @@ pub fn shape_decompile_meta(addr: &str, raw: &Value) -> Value {
         .collect();
 
     let mut global_refs_vec: Vec<_> = global_refs.into_iter().collect();
-    global_refs_vec.sort_by(|a, b| a.0.cmp(&b.0));
+    global_refs_vec.sort_unstable_by_key(|k| k.0);
     let global_refs: Vec<Value> = global_refs_vec
         .into_iter()
         .map(|(offset, count)| json!({ "offset": hex_string(offset), "count": count }))
