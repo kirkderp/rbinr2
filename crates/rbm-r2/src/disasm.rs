@@ -925,7 +925,12 @@ pub fn shape_function_refs(addr: &str, raw: &Value) -> Value {
         .map(|(ty, set)| {
             let mut sorted_set: Vec<_> = set.into_iter().collect();
             sorted_set.sort_unstable();
-            let preview: Vec<String> = sorted_set.iter().take(12).copied().map(hex_string).collect();
+            let preview: Vec<String> = sorted_set
+                .iter()
+                .take(12)
+                .copied()
+                .map(hex_string)
+                .collect();
             json!({
                 "type": ty,
                 "target_count": sorted_set.len(),
