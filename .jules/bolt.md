@@ -1,0 +1,3 @@
+## 2024-05-21 - HashMap vs BTreeMap optimization
+**Learning:** Replaced `BTreeMap`/`BTreeSet` with `HashMap`/`HashSet` in `crates/rbm-r2/src/disasm.rs`. When we don't need sorting, HashMap provides O(1) average lookup/insert time vs BTreeMap's O(log n). This provides a measurable optimization on parsing large amounts of instructions especially since the parsed objects are immediately serialized to JSON arrays and their internal sorted property is often not required for correct execution. We passed all tests, so this was safe.
+**Action:** Use HashMap/HashSet over BTreeMap/BTreeSet unless we specifically need sorted traversal.

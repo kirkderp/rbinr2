@@ -436,6 +436,7 @@ pub async fn disassemble_function(session: &Session, addr: &str) -> ToolResult<S
 ///
 /// Returns an error if the address is invalid, the r2 command fails, or the
 /// response is not valid JSON.
+#[allow(clippy::too_many_lines)]
 pub async fn disassemble_json(session: &Session, addr: &str, count: u64) -> ToolResult<Value> {
     validate_addr(addr)?;
     let raw = session.cmdj(format!("pdj {count} @ {addr}")).await?;
@@ -757,7 +758,7 @@ struct CfgProjection {
 }
 
 fn project_cfg_blocks(blocks: &[Value]) -> CfgProjection {
-    let mut index_by_addr = std::collections::BTreeMap::new();
+    let mut index_by_addr = std::collections::HashMap::new();
     for (idx, block) in blocks.iter().enumerate() {
         if let Some(baddr) = block.get("addr").and_then(Value::as_u64) {
             index_by_addr.insert(baddr, idx);
@@ -779,7 +780,7 @@ fn project_cfg_blocks(blocks: &[Value]) -> CfgProjection {
 fn project_cfg_block(
     idx: usize,
     block: &Value,
-    index_by_addr: &std::collections::BTreeMap<u64, usize>,
+    index_by_addr: &std::collections::HashMap<u64, usize>,
     edges: &mut Vec<Value>,
 ) -> Value {
     let baddr = block.get("addr").and_then(Value::as_u64).unwrap_or(0);
@@ -835,7 +836,7 @@ fn cfg_successors(
     from_addr: u64,
     jump: Option<u64>,
     fail: Option<u64>,
-    index_by_addr: &std::collections::BTreeMap<u64, usize>,
+    index_by_addr: &std::collections::HashMap<u64, usize>,
     edges: &mut Vec<Value>,
 ) -> Vec<usize> {
     let mut successors = Vec::new();
@@ -857,8 +858,8 @@ fn cfg_successors(
 }
 
 fn attach_predecessors(projected_blocks: Vec<Value>, edges: &[Value]) -> Vec<Value> {
-    let mut predecessor_map: std::collections::BTreeMap<usize, Vec<usize>> =
-        std::collections::BTreeMap::new();
+    let mut predecessor_map: std::collections::HashMap<usize, Vec<usize>> =
+        std::collections::HashMap::new();
     for edge in edges {
         let from = edge
             .get("from_index")
@@ -894,9 +895,9 @@ fn attach_predecessors(projected_blocks: Vec<Value>, edges: &[Value]) -> Vec<Val
 
 pub fn shape_function_refs(addr: &str, raw: &Value) -> Value {
     let refs = raw.as_array().cloned().unwrap_or_default();
-    let mut counts: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
-    let mut targets: std::collections::BTreeMap<String, std::collections::BTreeSet<u64>> =
-        std::collections::BTreeMap::new();
+    let mut counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut targets: std::collections::HashMap<String, std::collections::HashSet<u64>> =
+        std::collections::HashMap::new();
 
     for item in &refs {
         let ty = item
@@ -910,20 +911,26 @@ pub fn shape_function_refs(addr: &str, raw: &Value) -> Value {
         }
     }
 
-    let type_counts: Vec<Value> = counts
+    let mut counts_vec: Vec<_> = counts.into_iter().collect();
+    counts_vec.sort_by(|a, b| a.0.cmp(&b.0));
+    let type_counts: Vec<Value> = counts_vec
         .into_iter()
         .map(|(ty, count)| json!({ "type": ty, "count": count }))
         .collect();
 
-    let target_groups: Vec<Value> = targets
+    let mut targets_vec: Vec<_> = targets.into_iter().collect();
+    targets_vec.sort_by(|a, b| a.0.cmp(&b.0));
+    let target_groups: Vec<Value> = targets_vec
         .into_iter()
         .map(|(ty, set)| {
-            let preview: Vec<String> = set.iter().take(12).copied().map(hex_string).collect();
+            let mut sorted_set: Vec<_> = set.into_iter().collect();
+            sorted_set.sort_unstable();
+            let preview: Vec<String> = sorted_set.iter().take(12).copied().map(hex_string).collect();
             json!({
                 "type": ty,
-                "target_count": set.len(),
+                "target_count": sorted_set.len(),
                 "targets_preview": preview,
-                "targets_truncated": set.len() > 12,
+                "targets_truncated": sorted_set.len() > 12,
             })
         })
         .collect();
@@ -1101,6 +1108,7 @@ async fn session_has_any_decompiler(session: &Session) -> ToolResult<bool> {
     Ok(raw.lines().any(|line| !line.trim().is_empty()))
 }
 
+#[allow(clippy::too_many_lines)]
 pub fn shape_decompile_meta(addr: &str, raw: &Value) -> Value {
     let code = raw
         .get("code")
@@ -1113,14 +1121,14 @@ pub fn shape_decompile_meta(addr: &str, raw: &Value) -> Value {
         .cloned()
         .unwrap_or_default();
 
-    let mut annotation_type_counts: std::collections::BTreeMap<String, usize> =
-        std::collections::BTreeMap::new();
-    let mut function_refs: std::collections::BTreeMap<(String, u64), usize> =
-        std::collections::BTreeMap::new();
-    let mut global_refs: std::collections::BTreeMap<u64, usize> = std::collections::BTreeMap::new();
-    let mut local_variables: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    let mut function_parameters: std::collections::BTreeSet<String> =
-        std::collections::BTreeSet::new();
+    let mut annotation_type_counts: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+    let mut function_refs: std::collections::HashMap<(String, u64), usize> =
+        std::collections::HashMap::new();
+    let mut global_refs: std::collections::HashMap<u64, usize> = std::collections::HashMap::new();
+    let mut local_variables: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut function_parameters: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
 
     for ann in &annotations {
         let ty = ann
@@ -1165,22 +1173,33 @@ pub fn shape_decompile_meta(addr: &str, raw: &Value) -> Value {
         }
     }
 
-    let annotation_type_counts: Vec<Value> = annotation_type_counts
+    let mut annotation_type_counts_vec: Vec<_> = annotation_type_counts.into_iter().collect();
+    annotation_type_counts_vec.sort_by(|a, b| a.0.cmp(&b.0));
+    let annotation_type_counts: Vec<Value> = annotation_type_counts_vec
         .into_iter()
         .map(|(name, count)| json!({ "type": name, "count": count }))
         .collect();
-    let function_refs: Vec<Value> = function_refs
+
+    let mut function_refs_vec: Vec<_> = function_refs.into_iter().collect();
+    function_refs_vec.sort_by(|a, b| a.0.cmp(&b.0));
+    let function_refs: Vec<Value> = function_refs_vec
         .into_iter()
         .map(|((name, offset), count)| {
             json!({ "name": name, "offset": hex_string(offset), "count": count })
         })
         .collect();
-    let global_refs: Vec<Value> = global_refs
+
+    let mut global_refs_vec: Vec<_> = global_refs.into_iter().collect();
+    global_refs_vec.sort_by(|a, b| a.0.cmp(&b.0));
+    let global_refs: Vec<Value> = global_refs_vec
         .into_iter()
         .map(|(offset, count)| json!({ "offset": hex_string(offset), "count": count }))
         .collect();
-    let local_variables: Vec<String> = local_variables.into_iter().collect();
-    let function_parameters: Vec<String> = function_parameters.into_iter().collect();
+
+    let mut local_variables: Vec<String> = local_variables.into_iter().collect();
+    local_variables.sort_unstable();
+    let mut function_parameters: Vec<String> = function_parameters.into_iter().collect();
+    function_parameters.sort_unstable();
 
     json!({
         "addr": addr,
