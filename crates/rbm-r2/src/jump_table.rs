@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
+use std::sync::OnceLock;
 
 use rbm_core::{ToolError, ToolResult};
 use regex::Regex;
@@ -273,10 +274,13 @@ struct ImmediateWrite {
 }
 
 fn parse_immediate_write(opcode: &str) -> Option<ImmediateWrite> {
-    let re = Regex::new(
-        r"(?i)^mov\s+(byte|word|dword|qword)\s+\[([a-z0-9]+)(?:\s*([+-])\s*(0x[0-9a-f]+|\d+))?\],\s*(0x[0-9a-f]+|\d+)$",
-    )
-    .ok()?;
+    static RE: OnceLock<Regex> = OnceLock::new();
+    let re = RE.get_or_init(|| {
+        Regex::new(
+            r"(?i)^mov\s+(byte|word|dword|qword)\s+\[([a-z0-9]+)(?:\s*([+-])\s*(0x[0-9a-f]+|\d+))?\],\s*(0x[0-9a-f]+|\d+)$",
+        )
+        .expect("valid immediate write regex")
+    });
     let caps = re.captures(opcode.trim())?;
     let size = match caps.get(1)?.as_str().to_ascii_lowercase().as_str() {
         "byte" => 1,
@@ -327,7 +331,8 @@ fn buffer_summary(base: &str, bytes: &BTreeMap<i64, u8>, writes: Vec<String>) ->
 }
 
 fn collect_constants(opcode: &str, out: &mut BTreeSet<String>) {
-    let re = Regex::new(r"(?i)\b0x[0-9a-f]{3,16}\b").expect("constant regex");
+    static RE: OnceLock<Regex> = OnceLock::new();
+    let re = RE.get_or_init(|| Regex::new(r"(?i)\b0x[0-9a-f]{3,16}\b").expect("constant regex"));
     for m in re.find_iter(opcode) {
         let raw = m.as_str().to_ascii_lowercase();
         if !matches!(raw.as_str(), "0xff" | "0xffff" | "0xffffffff") {

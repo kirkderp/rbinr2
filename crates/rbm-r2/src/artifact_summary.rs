@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, VecDeque};
+use std::sync::OnceLock;
 
 use rbm_core::{ToolError, ToolResult};
 use regex::Regex;
@@ -625,10 +626,9 @@ fn branch_target(opcode: &str, ins: &Instruction) -> Option<u64> {
     }
     if opcode.starts_with("jmp ") || opcode.starts_with('j') {
         return ins.jump.or_else(|| {
-            Regex::new(r"(?i)\b0x[0-9a-f]+\b")
-                .ok()?
-                .find(opcode)
-                .and_then(|m| parse_number(m.as_str()))
+            static RE: OnceLock<Regex> = OnceLock::new();
+            let re = RE.get_or_init(|| Regex::new(r"(?i)\b0x[0-9a-f]+\b").expect("hex regex"));
+            re.find(opcode).and_then(|m| parse_number(m.as_str()))
         });
     }
     None
