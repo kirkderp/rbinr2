@@ -1,0 +1,4 @@
+## 2024-05-22 - Prevent command injection in r2 pipe command interpolations
+**Vulnerability:** User inputs were dynamically interpolated into `radare2` commands. The input validation layer restricted some separators (`|`, `;`, etc) but missed dangerous characters like `<`, `>`, `&`, and `!` which could allow for unauthorized system command execution or file operations inside r2 contexts.
+**Learning:** In scenarios where user data is concatenated directly into tool shells or piped environments (like r2pipe), traditional bash command separators aren't the only vectors. Redirections and tool-specific shell-escapes (like `!` in r2) are equally critical to restrict.
+**Prevention:** Always validate all shell metacharacters and application-specific escape sequences when dynamically building commands, or prefer structured parameters (which r2 pipe doesn't natively support).
