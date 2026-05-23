@@ -29,7 +29,7 @@ pub fn validate_query_command(command: &str) -> ToolResult<()> {
     }
     if trimmed
         .chars()
-        .any(|c| matches!(c, ';' | '\n' | '\r' | '|' | '`'))
+        .any(|c| matches!(c, ';' | '\n' | '\r' | '|' | '`' | '>'))
     {
         return Err(ToolError::invalid(format!(
             "r2_cmd accepts one query command; separators are not allowed: {command:?}"
@@ -82,5 +82,6 @@ mod tests {
         assert!(validate_query_command("wx 90").is_err());
         assert!(validate_query_command("ij; wx 90").is_err());
         assert!(validate_query_command("!sh").is_err());
+        assert!(validate_query_command("pd 10 > /tmp/hacked").is_err());
     }
 }

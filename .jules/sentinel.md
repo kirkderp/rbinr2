@@ -1,0 +1,4 @@
+## 2024-05-23 - Prevent Arbitrary File Write via r2 Output Redirection
+**Vulnerability:** Command injection via internal output redirection. The validation logic for the radare2 `r2_cmd` prevented separators like `;`, `\n`, `|` and `\`` but did not block the output redirection character `>`. This allowed attackers to run arbitrary file writes using r2 internal redirects (e.g., `pd 10 > /tmp/hacked`).
+**Learning:** Radare2 has internal shell-like capabilities that must be comprehensively blocked. Relying purely on basic shell separators is insufficient when the underlying engine supports standard output redirection syntax.
+**Prevention:** Always block the `>` character during input sanitization in contexts dealing with raw r2 command processing or evaluation, specifically in functions like `validate_query_command` and `check_no_r2_separators`.
