@@ -436,20 +436,7 @@ impl SessionManager {
     }
 
     fn forget_aliases(&self, canonical: &Path) {
-        let aliases: Vec<PathBuf> = self
-            .aliases
-            .iter()
-            .filter_map(|entry| {
-                if entry.value().as_path() == canonical {
-                    Some(entry.key().clone())
-                } else {
-                    None
-                }
-            })
-            .collect();
-        for alias in aliases {
-            self.aliases.remove(&alias);
-        }
+        self.aliases.retain(|_, v| v.as_path() != canonical);
     }
 
     fn try_install(&self, canonical: PathBuf, session: Arc<Session>) -> bool {

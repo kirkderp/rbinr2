@@ -234,6 +234,10 @@ pub fn glob_or_substring_match(pattern_lower: &str, name_lower: &str) -> bool {
 
 #[must_use]
 pub fn glob_match(pattern: &str, text: &str) -> bool {
+    if pattern.is_ascii() && text.is_ascii() {
+        return glob_match_bytes(pattern.as_bytes(), text.as_bytes());
+    }
+
     let p: Vec<char> = pattern.chars().collect();
     let t: Vec<char> = text.chars().collect();
     let mut pi = 0usize;
@@ -257,6 +261,33 @@ pub fn glob_match(pattern: &str, text: &str) -> bool {
         }
     }
     while pi < p.len() && p[pi] == '*' {
+        pi += 1;
+    }
+    pi == p.len()
+}
+
+fn glob_match_bytes(p: &[u8], t: &[u8]) -> bool {
+    let mut pi = 0usize;
+    let mut ti = 0usize;
+    let mut star: Option<usize> = None;
+    let mut star_t = 0usize;
+    while ti < t.len() {
+        if pi < p.len() && (p[pi] == b'?' || p[pi] == t[ti]) {
+            pi += 1;
+            ti += 1;
+        } else if pi < p.len() && p[pi] == b'*' {
+            star = Some(pi);
+            star_t = ti;
+            pi += 1;
+        } else if let Some(sp) = star {
+            pi = sp + 1;
+            star_t += 1;
+            ti = star_t;
+        } else {
+            return false;
+        }
+    }
+    while pi < p.len() && p[pi] == b'*' {
         pi += 1;
     }
     pi == p.len()

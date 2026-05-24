@@ -1,0 +1,3 @@
+## 2024-06-25 - Avoid unnecessary Vec allocations in hot search paths
+**Learning:** In highly iterated search matchers (like `glob_match`), converting large `&str` instances to `Vec<char>` for iteration triggers extremely slow heap allocations on every execution.
+**Action:** When working with ASCII patterns in Rust, add an `is_ascii` fast-path to match at the byte level with `&[u8]`. Alternatively, use allocation-free `.chars()` iterators instead of `.collect::<Vec<char>>()`. Similarly, replace loop-and-remove filter patterns with `DashMap::retain()` when available, significantly reducing allocations.
