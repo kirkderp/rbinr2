@@ -86,7 +86,7 @@ fn check_no_r2_separators(label: &str, value: &str) -> ToolResult<()> {
     }
     if value
         .chars()
-        .any(|c| matches!(c, ';' | '\n' | '\r' | '|' | '`'))
+        .any(|c| matches!(c, ';' | '\n' | '\r' | '|' | '`' | '>' | '<' | '&' | '!'))
     {
         return Err(ToolError::invalid(format!(
             "{label} contains an r2 command separator: {value:?}"

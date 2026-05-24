@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, HashSet, VecDeque};
+use std::sync::OnceLock;
 
 use rbm_core::{ToolError, ToolResult};
 use regex::Regex;
@@ -820,8 +821,9 @@ fn split_opcode(opcode: &str) -> Option<(String, Vec<String>)> {
 }
 
 fn normalize_register(raw: &str) -> ToolResult<String> {
+    static RE: OnceLock<Regex> = OnceLock::new();
     let reg = raw.trim().trim_start_matches('%').to_ascii_lowercase();
-    let re = Regex::new(r"^[a-z][a-z0-9]{1,4}$").expect("valid register regex");
+    let re = RE.get_or_init(|| Regex::new(r"^[a-z][a-z0-9]{1,4}$").expect("valid register regex"));
     if re.is_match(&reg) && !reg.contains('[') && !reg.contains('+') && !reg.contains('-') {
         Ok(reg)
     } else {
@@ -881,8 +883,10 @@ fn is_stack_pointer(operand: &str) -> bool {
 }
 
 fn parse_stack_seed_slot(seed: &str) -> Option<i64> {
-    let stack =
-        Regex::new(r"^stack\[([+-]?0x[0-9a-f]+|[+-]?\d+)\]$").expect("valid stack slot regex");
+    static RE: OnceLock<Regex> = OnceLock::new();
+    let stack = RE.get_or_init(|| {
+        Regex::new(r"^stack\[([+-]?0x[0-9a-f]+|[+-]?\d+)\]$").expect("valid stack slot regex")
+    });
     let captures = stack.captures(seed)?;
     parse_signed_number(captures.get(1)?.as_str())
 }

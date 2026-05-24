@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, HashMap};
+use std::sync::OnceLock;
 
 use rbm_core::{ToolError, ToolResult};
 use regex::Regex;
@@ -500,12 +501,19 @@ fn object_for_memref(
 }
 
 fn parse_memrefs(opcode: &str) -> Vec<MemRef> {
-    let re = Regex::new(
-        r"(?i)(?:(byte|word|dword|qword|oword)\s+)?(\[[a-z][a-z0-9]*(?:\s*[+-]\s*(?:0x[0-9a-f]+|\d+))?\])",
-    )
-    .expect("memory reference regex");
-    let inner_re = Regex::new(r"(?i)^\[([a-z][a-z0-9]*)(?:\s*([+-])\s*(0x[0-9a-f]+|\d+))?\]$")
-        .expect("memory inner regex");
+    static RE: OnceLock<Regex> = OnceLock::new();
+    static INNER_RE: OnceLock<Regex> = OnceLock::new();
+
+    let re = RE.get_or_init(|| {
+        Regex::new(
+            r"(?i)(?:(byte|word|dword|qword|oword)\s+)?(\[[a-z][a-z0-9]*(?:\s*[+-]\s*(?:0x[0-9a-f]+|\d+))?\])",
+        )
+        .expect("memory reference regex")
+    });
+    let inner_re = INNER_RE.get_or_init(|| {
+        Regex::new(r"(?i)^\[([a-z][a-z0-9]*)(?:\s*([+-])\s*(0x[0-9a-f]+|\d+))?\]$")
+            .expect("memory inner regex")
+    });
     re.captures_iter(opcode)
         .filter_map(|caps| {
             let text = caps.get(2)?.as_str().to_string();
