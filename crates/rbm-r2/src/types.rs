@@ -17,7 +17,7 @@ pub fn validate_type_arg(label: &str, value: &str, allow_empty: bool) -> ToolRes
     }
     if value
         .chars()
-        .any(|c| matches!(c, ';' | '\n' | '\r' | '|') || c == char::from(0x60))
+        .any(|c| matches!(c, ';' | '\n' | '\r' | '|' | '`' | '>' | '<' | '&' | '!'))
     {
         return Err(ToolError::invalid(format!(
             "{label} contains an r2 command separator: {value:?}"

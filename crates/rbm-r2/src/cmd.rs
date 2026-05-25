@@ -29,7 +29,7 @@ pub fn validate_query_command(command: &str) -> ToolResult<()> {
     }
     if trimmed
         .chars()
-        .any(|c| matches!(c, ';' | '\n' | '\r' | '|' | '`' | '>'))
+        .any(|c| matches!(c, ';' | '\n' | '\r' | '|' | '`' | '>' | '<' | '&' | '!'))
     {
         return Err(ToolError::invalid(format!(
             "r2_cmd accepts one query command; separators and redirects are not allowed: {command:?}"

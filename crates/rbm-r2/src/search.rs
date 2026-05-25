@@ -15,7 +15,7 @@ pub fn validate_search_pattern(pattern: &str) -> ToolResult<()> {
     }
     if pattern
         .chars()
-        .any(|c| matches!(c, ';' | '\n' | '\r' | '|' | '`'))
+        .any(|c| matches!(c, ';' | '\n' | '\r' | '|' | '`' | '>' | '<' | '&' | '!'))
     {
         return Err(ToolError::invalid(format!(
             "search pattern contains an r2 command separator: {pattern:?}"

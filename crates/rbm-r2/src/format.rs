@@ -139,7 +139,7 @@ pub async fn class_methods_json(session: &Session, classname: &str) -> ToolResul
 pub fn validate_classname(classname: &str) -> ToolResult<()> {
     if classname
         .chars()
-        .any(|c| matches!(c, ';' | '\n' | '\r' | '|' | '`'))
+        .any(|c| matches!(c, ';' | '\n' | '\r' | '|' | '`' | '>' | '<' | '&' | '!'))
     {
         return Err(ToolError::invalid(format!(
             "classname contains an r2 command separator: {classname:?}"

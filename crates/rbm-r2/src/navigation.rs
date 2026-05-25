@@ -290,7 +290,7 @@ fn validate_type_arg_for_search(label: &str, value: &str) -> ToolResult<()> {
     }
     if value
         .chars()
-        .any(|c| matches!(c, ';' | '\n' | '\r' | '|') || c == char::from(0x60))
+        .any(|c| matches!(c, ';' | '\n' | '\r' | '|' | '`' | '>' | '<' | '&' | '!'))
     {
         return Err(ToolError::invalid(format!(
             "{label} contains an r2 command separator: {value:?}"
