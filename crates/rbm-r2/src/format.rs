@@ -137,10 +137,7 @@ pub async fn class_methods_json(session: &Session, classname: &str) -> ToolResul
 ///
 /// Returns an error if the class name contains an r2 command separator.
 pub fn validate_classname(classname: &str) -> ToolResult<()> {
-    if classname
-        .chars()
-        .any(|c| matches!(c, ';' | '\n' | '\r' | '|' | '`'))
-    {
+    if crate::cmd::has_r2_shell_metacharacters(classname) {
         return Err(ToolError::invalid(format!(
             "classname contains an r2 command separator: {classname:?}"
         )));

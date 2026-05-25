@@ -27,18 +27,10 @@ pub fn validate_query_command(command: &str) -> ToolResult<()> {
     if trimmed.is_empty() {
         return Err(ToolError::invalid("r2_cmd command is empty"));
     }
-    if trimmed
-        .chars()
-        .any(|c| matches!(c, ';' | '\n' | '\r' | '|' | '`' | '>'))
-    {
+    if has_r2_shell_metacharacters(trimmed) {
         return Err(ToolError::invalid(format!(
-            "r2_cmd accepts one query command; separators and redirects are not allowed: {command:?}"
+            "r2_cmd accepts one query command; separators, redirects, and shell escapes are not allowed: {command:?}"
         )));
-    }
-    if trimmed.contains('!') {
-        return Err(ToolError::invalid(
-            "r2_cmd does not allow shell escapes or bang commands",
-        ));
     }
 
     let first = trimmed.split_whitespace().next().unwrap_or(trimmed);
@@ -65,9 +57,22 @@ pub fn validate_query_command(command: &str) -> ToolResult<()> {
     Ok(())
 }
 
+/// Validate a string input to ensure it contains no dangerous radare2 shell metacharacters
+/// or query modifiers.
+///
+/// Under the hood, radare2 supports shell redirection, pipes, and subshell executions
+/// using character tokens like `;`, `|`, `&`, `!`, `>`, `<`, `` ` ``, `\n`, `\r`.
+/// This helper detects any such characters.
+#[must_use]
+pub fn has_r2_shell_metacharacters(value: &str) -> bool {
+    value
+        .chars()
+        .any(|c| matches!(c, ';' | '\n' | '\r' | '|' | '`' | '>' | '<' | '&' | '!'))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::validate_query_command;
+    use super::{has_r2_shell_metacharacters, validate_query_command};
 
     #[test]
     fn allows_read_queries() {
@@ -83,5 +88,19 @@ mod tests {
         assert!(validate_query_command("ij; wx 90").is_err());
         assert!(validate_query_command("!sh").is_err());
         assert!(validate_query_command("ij > /tmp/out").is_err());
+    }
+
+    #[test]
+    fn rejects_all_shell_operators() {
+        assert!(has_r2_shell_metacharacters("cmd; injection"));
+        assert!(has_r2_shell_metacharacters("cmd\ninjection"));
+        assert!(has_r2_shell_metacharacters("cmd\rinjection"));
+        assert!(has_r2_shell_metacharacters("cmd|injection"));
+        assert!(has_r2_shell_metacharacters("cmd`injection`"));
+        assert!(has_r2_shell_metacharacters("cmd > file"));
+        assert!(has_r2_shell_metacharacters("cmd < file"));
+        assert!(has_r2_shell_metacharacters("cmd & background"));
+        assert!(has_r2_shell_metacharacters("!shell"));
+        assert!(!has_r2_shell_metacharacters("aflj"));
     }
 }

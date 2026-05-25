@@ -13,10 +13,7 @@ pub fn validate_search_pattern(pattern: &str) -> ToolResult<()> {
     if pattern.is_empty() {
         return Err(ToolError::invalid("search pattern is empty"));
     }
-    if pattern
-        .chars()
-        .any(|c| matches!(c, ';' | '\n' | '\r' | '|' | '`'))
-    {
+    if crate::cmd::has_r2_shell_metacharacters(pattern) {
         return Err(ToolError::invalid(format!(
             "search pattern contains an r2 command separator: {pattern:?}"
         )));

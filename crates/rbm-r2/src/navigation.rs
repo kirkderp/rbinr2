@@ -288,10 +288,7 @@ fn validate_type_arg_for_search(label: &str, value: &str) -> ToolResult<()> {
     if value.trim().is_empty() {
         return Err(ToolError::invalid(format!("{label} is empty")));
     }
-    if value
-        .chars()
-        .any(|c| matches!(c, ';' | '\n' | '\r' | '|') || c == char::from(0x60))
-    {
+    if crate::cmd::has_r2_shell_metacharacters(value) {
         return Err(ToolError::invalid(format!(
             "{label} contains an r2 command separator: {value:?}"
         )));

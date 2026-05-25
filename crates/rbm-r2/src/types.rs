@@ -15,10 +15,7 @@ pub fn validate_type_arg(label: &str, value: &str, allow_empty: bool) -> ToolRes
     if !allow_empty && value.trim().is_empty() {
         return Err(ToolError::invalid(format!("{label} is empty")));
     }
-    if value
-        .chars()
-        .any(|c| matches!(c, ';' | '\n' | '\r' | '|') || c == char::from(0x60))
-    {
+    if crate::cmd::has_r2_shell_metacharacters(value) {
         return Err(ToolError::invalid(format!(
             "{label} contains an r2 command separator: {value:?}"
         )));
