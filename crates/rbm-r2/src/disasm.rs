@@ -84,10 +84,12 @@ fn check_no_r2_separators(label: &str, value: &str) -> ToolResult<()> {
             "{label} is empty; pass an address, symbol, or r2 flag in the MCP parameter named \"{label}\".",
         )));
     }
-    if value
-        .chars()
-        .any(|c| matches!(c, ';' | '\n' | '\r' | '|' | '`' | '>' | '<' | '&' | '!'))
-    {
+    if value.chars().any(|c| {
+        matches!(
+            c,
+            ';' | '\n' | '\r' | '|' | '`' | '>' | '<' | '&' | '!' | '$' | '\\'
+        )
+    }) {
         return Err(ToolError::invalid(format!(
             "{label} contains an r2 command separator: {value:?}"
         )));
