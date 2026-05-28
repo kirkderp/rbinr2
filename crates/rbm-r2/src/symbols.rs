@@ -145,7 +145,7 @@ pub fn project_grouped_imports(value: &Value) -> Value {
     };
 
     let mut group_names: Vec<_> = obj.keys().cloned().collect();
-    group_names.sort();
+    group_names.sort_unstable();
 
     let groups: Vec<Value> = group_names
         .into_iter()
@@ -156,7 +156,7 @@ pub fn project_grouped_imports(value: &Value) -> Value {
                 .cloned()
                 .unwrap_or_else(Map::new);
             let mut import_names: Vec<_> = imports_obj.keys().cloned().collect();
-            import_names.sort();
+            import_names.sort_unstable();
             let imports: Vec<Value> = import_names
                 .into_iter()
                 .map(|import_name| {
@@ -170,7 +170,7 @@ pub fn project_grouped_imports(value: &Value) -> Value {
                                 .collect()
                         })
                         .unwrap_or_default();
-                    callers.sort();
+                    callers.sort_unstable();
                     callers.dedup();
                     json!({
                         "name": import_name,
