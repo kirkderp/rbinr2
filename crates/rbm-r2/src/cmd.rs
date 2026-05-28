@@ -65,9 +65,12 @@ pub fn validate_query_command(command: &str) -> ToolResult<()> {
 /// This helper detects any such characters.
 #[must_use]
 pub fn has_r2_shell_metacharacters(value: &str) -> bool {
-    value
-        .chars()
-        .any(|c| matches!(c, ';' | '\n' | '\r' | '|' | '`' | '>' | '<' | '&' | '!'))
+    value.chars().any(|c| {
+        matches!(
+            c,
+            ';' | '\n' | '\r' | '|' | '`' | '>' | '<' | '&' | '!' | '$' | '\\'
+        )
+    })
 }
 
 #[cfg(test)]
@@ -101,6 +104,8 @@ mod tests {
         assert!(has_r2_shell_metacharacters("cmd < file"));
         assert!(has_r2_shell_metacharacters("cmd & background"));
         assert!(has_r2_shell_metacharacters("!shell"));
+        assert!(has_r2_shell_metacharacters("cmd $VAR"));
+        assert!(has_r2_shell_metacharacters("cmd \\ escape"));
         assert!(!has_r2_shell_metacharacters("aflj"));
     }
 }
