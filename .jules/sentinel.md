@@ -1,0 +1,4 @@
+## 2024-05-29 - Command Injection via Radare2 Variable Expansion
+**Vulnerability:** Radare2 supports shell-like features including variable expansion (`$`) and escape sequences (`\`). The previous shell metacharacter blocklist missed these characters, allowing potential command injection or unexpected state mutation if a user-supplied string like `$var` or `\escaped` was evaluated.
+**Learning:** In tools that wrap complex internal CLI languages (like radare2's `r2pipe`), blocklists must be absolutely exhaustive. The radare2 shell is surprisingly powerful, treating variables (`$`) and escapes (`\`) as command evaluators in certain contexts.
+**Prevention:** Ensure all metacharacters (`<`, `>`, `&`, `!`, `$`, `\`, `|`, `;`, `` ` ``) are strictly blocked in user inputs that eventually get passed to `r2_cmd` or similar radare2 shell execution endpoints.
