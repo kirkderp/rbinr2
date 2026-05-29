@@ -391,7 +391,8 @@ pub fn build_seed_value_trace(
     let scanned = run_seed_trace(ops, &mut state);
 
     let mut tainted_registers_seen: Vec<_> = state.tainted_registers_seen.into_iter().collect();
-    tainted_registers_seen.sort();
+    // OPTIMIZE: Use sort_unstable to avoid unnecessary allocations and improve performance
+    tainted_registers_seen.sort_unstable();
 
     Ok(json!({
         "schema": "rbm.r2.value_trace.v0",

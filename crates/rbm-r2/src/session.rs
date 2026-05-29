@@ -453,7 +453,8 @@ impl SessionManager {
     #[must_use]
     pub fn list(&self) -> Vec<PathBuf> {
         let mut paths: Vec<PathBuf> = self.sessions.iter().map(|r| r.key().clone()).collect();
-        paths.sort();
+        // OPTIMIZE: Use sort_unstable to avoid unnecessary allocations and improve performance
+        paths.sort_unstable();
         paths
     }
 
