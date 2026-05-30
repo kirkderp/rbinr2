@@ -1,0 +1,4 @@
+## 2025-02-24 - Command Injection Risk in r2pipe Shell Execution
+**Vulnerability:** The `has_r2_shell_metacharacters` sanitizer for input to r2pipe commands did not block `$` (variable expansion) and `\` (escape sequence). This could allow bypassing the read-only restrictions and executing arbitrary commands or writing files using r2's internal shell.
+**Learning:** Radare2 has deep internal shell capabilities (e.g. `!`, `>`, `$`, `\`) that aren't just literal commands but act like bash. When interpolating user input directly into an r2 query, sanitizing typical injection like `;` and `|` is not enough; variable expansions and escapes must also be meticulously blocked.
+**Prevention:** Exhaustively block shell metacharacters like `<`, `>`, `&`, `!`, `$`, and `\` before interpolating untrusted data into r2pipe commands. Better yet, when possible, avoid shell interpolation and use parameterized calls if the backend allows it.
