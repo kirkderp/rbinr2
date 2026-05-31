@@ -219,7 +219,8 @@ pub fn project_class_methods(value: &Value, classname: &str) -> Value {
             })
         })
         .collect();
-    methods.sort_by(|a, b| {
+    // Use sort_unstable_by to avoid allocations and improve performance
+    methods.sort_unstable_by(|a, b| {
         a.get("name")
             .and_then(Value::as_str)
             .unwrap_or("")
@@ -242,7 +243,8 @@ pub fn project_class_methods(value: &Value, classname: &str) -> Value {
             })
         })
         .collect();
-    fields.sort_by(|a, b| {
+    // Use sort_unstable_by to avoid allocations and improve performance
+    fields.sort_unstable_by(|a, b| {
         a.get("name")
             .and_then(Value::as_str)
             .unwrap_or("")
