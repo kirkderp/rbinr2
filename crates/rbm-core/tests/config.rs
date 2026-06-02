@@ -1,13 +1,11 @@
 #![allow(unsafe_code, clippy::undocumented_unsafe_blocks)]
 
 use std::path::PathBuf;
-use std::sync::LazyLock;
+
 
 use rbm_core::CachePaths;
 
-static ENV_GUARD: LazyLock<()> = LazyLock::new(|| unsafe {
-    std::env::remove_var("RBM_CACHE_DIR");
-});
+static ENV_GUARD: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 struct EnvGuard(String);
 
@@ -37,7 +35,7 @@ impl Drop for EnvGuard {
 
 #[test]
 fn cache_paths_env_overrides() {
-    LazyLock::force(&ENV_GUARD);
+    let _lock = ENV_GUARD.lock().unwrap();
 
     let _guard = EnvGuard::set("RBM_CACHE_DIR", "/tmp/rbinr2-cache-test");
     let paths = CachePaths::from_env().unwrap();
@@ -49,7 +47,7 @@ fn cache_paths_env_overrides() {
 
 #[test]
 fn cache_paths_default() {
-    LazyLock::force(&ENV_GUARD);
+    let _lock = ENV_GUARD.lock().unwrap();
 
     unsafe {
         std::env::remove_var("RBM_CACHE_DIR");
@@ -60,7 +58,7 @@ fn cache_paths_default() {
 
 #[test]
 fn cache_paths_empty_env() {
-    LazyLock::force(&ENV_GUARD);
+    let _lock = ENV_GUARD.lock().unwrap();
 
     let _guard = EnvGuard::set("RBM_CACHE_DIR", "");
     assert!(CachePaths::from_env().is_err());
@@ -68,7 +66,7 @@ fn cache_paths_empty_env() {
 
 #[test]
 fn cache_paths_construct_subs() {
-    LazyLock::force(&ENV_GUARD);
+    let _lock = ENV_GUARD.lock().unwrap();
 
     let paths = CachePaths::new("/base");
     assert_eq!(paths.overflow_dir(), PathBuf::from("/base/overflow"));
@@ -82,7 +80,7 @@ fn cache_paths_construct_subs() {
 
 #[test]
 fn cache_paths_ensure_all_creates_dirs() {
-    LazyLock::force(&ENV_GUARD);
+    let _lock = ENV_GUARD.lock().unwrap();
 
     let dir = tempfile::tempdir().unwrap();
     let paths = CachePaths::new(dir.path().join("cache"));
