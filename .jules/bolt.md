@@ -1,0 +1,3 @@
+## 2024-05-18 - Use sort_unstable() for Primitives
+**Learning:** In Rust, `.sort()` is stable and allocates auxiliary memory (O(N/2) space). `.sort_unstable()` is generally faster and does not allocate any auxiliary memory. For standard primitives (like `Vec<PathBuf>`, `Vec<String>`) or when the stable sort is not required, using `.sort_unstable()` drastically minimizes allocations, making it ideal for performance-focused environments like this rbm-r2 backend.
+**Action:** Always default to `.sort_unstable()` and `.sort_unstable_by()` over `.sort()` and `.sort_by()` when sorting unless stable sorting is explicitly needed for a specific algorithm.
