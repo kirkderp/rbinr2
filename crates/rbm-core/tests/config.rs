@@ -2,7 +2,6 @@
 
 use std::path::PathBuf;
 
-
 use rbm_core::CachePaths;
 
 static ENV_GUARD: std::sync::Mutex<()> = std::sync::Mutex::new(());
