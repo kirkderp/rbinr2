@@ -66,9 +66,12 @@ pub fn validate_query_command(command: &str) -> ToolResult<()> {
 /// This helper detects any such characters.
 #[must_use]
 pub fn has_r2_shell_metacharacters(value: &str) -> bool {
-    value
-        .chars()
-        .any(|c| matches!(c, ';' | '\n' | '\r' | '|' | '`' | '>' | '<' | '&' | '!' | '$' | '\\'))
+    value.chars().any(|c| {
+        matches!(
+            c,
+            ';' | '\n' | '\r' | '|' | '`' | '>' | '<' | '&' | '!' | '$' | '\\'
+        )
+    })
 }
 
 #[cfg(test)]
