@@ -1,0 +1,4 @@
+## 2024-06-04 - [Fix Command Injection via r2pipe Metacharacters]
+**Vulnerability:** Command injection was possible via radare2's internal shell due to the missing sanitization of variable expansion (`$`) and line continuation/escape characters (`\`).
+**Learning:** Radare2's `r2pipe` interface supports its own shell-like language. While obvious redirection (`>`) and command execution (`!`, `` ` ``) were filtered, the variable expansion (`$`) and escape/continuation (`\`) characters were omitted, potentially allowing an attacker to inject shell commands via evaluated internal variable expansion or by breaking out of command blocks.
+**Prevention:** Always comprehensively review the specific command evaluation logic and parser behaviors of tools interfaced via RPC or IPC (like r2pipe). When implementing deny-lists for command sanitization, ensure all possible evaluation triggering characters are included.

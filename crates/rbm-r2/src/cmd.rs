@@ -61,13 +61,13 @@ pub fn validate_query_command(command: &str) -> ToolResult<()> {
 /// or query modifiers.
 ///
 /// Under the hood, radare2 supports shell redirection, pipes, and subshell executions
-/// using character tokens like `;`, `|`, `&`, `!`, `>`, `<`, `` ` ``, `\n`, `\r`.
+/// using character tokens like `;`, `|`, `&`, `!`, `>`, `<`, `` ` ``, `\n`, `\r`, `$`, `\`.
 /// This helper detects any such characters.
 #[must_use]
 pub fn has_r2_shell_metacharacters(value: &str) -> bool {
     value
         .chars()
-        .any(|c| matches!(c, ';' | '\n' | '\r' | '|' | '`' | '>' | '<' | '&' | '!'))
+        .any(|c| matches!(c, ';' | '\n' | '\r' | '|' | '`' | '>' | '<' | '&' | '!' | '$' | '\\'))
 }
 
 #[cfg(test)]
@@ -101,6 +101,8 @@ mod tests {
         assert!(has_r2_shell_metacharacters("cmd < file"));
         assert!(has_r2_shell_metacharacters("cmd & background"));
         assert!(has_r2_shell_metacharacters("!shell"));
+        assert!(has_r2_shell_metacharacters("echo $PATH"));
+        assert!(has_r2_shell_metacharacters("cmd \\ injection"));
         assert!(!has_r2_shell_metacharacters("aflj"));
     }
 }
