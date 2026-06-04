@@ -81,7 +81,7 @@ pub fn extract_constants(disasm: &str) -> Vec<Value> {
         }
         out.push(val);
     }
-    out.sort_by(|a, b| b.cmp(a));
+    out.sort_unstable_by(|a, b| b.cmp(a));
     out.truncate(20);
     out.into_iter()
         .map(|val| json!({"value": val, "hex": format!("{val:#x}")}))
