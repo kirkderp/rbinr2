@@ -1,0 +1,4 @@
+## 2024-05-24 - Command Injection Bypass via Variable Expansion and Escaping
+**Vulnerability:** The input sanitization function `has_r2_shell_metacharacters` blocked several shell operators but missed `$` (variable expansion) and `\` (escaping/line continuation). This allowed potential command injection in radare2's internal shell environment.
+**Learning:** Radare2's internal shell supports more metacharacters than standard redirection and piping operators. Variable expansion and escaping can be used to bypass simplistic blocklists and execute arbitrary commands or manipulate internal state.
+**Prevention:** Sanitize inputs exhaustively. The `has_r2_shell_metacharacters` function is the single source of truth for command sanitization and must include `$` and `\` among the blocked shell metacharacters.
