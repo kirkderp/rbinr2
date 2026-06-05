@@ -210,7 +210,7 @@ fn call_summary(ins: &Instruction, context: &VecDeque<String>) -> Value {
 }
 
 fn sorted_decoded_strings(mut decoded_strings: Vec<Value>) -> Vec<Value> {
-    decoded_strings.sort_by(|left, right| {
+    decoded_strings.sort_unstable_by(|left, right| {
         left["address"]
             .as_str()
             .unwrap_or_default()
