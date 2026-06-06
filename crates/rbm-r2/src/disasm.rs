@@ -912,14 +912,14 @@ pub fn shape_function_refs(addr: &str, raw: &Value) -> Value {
     }
 
     let mut counts_vec: Vec<_> = counts.into_iter().collect();
-    counts_vec.sort_by(|a, b| a.0.cmp(&b.0));
+    counts_vec.sort_unstable_by(|a, b| a.0.cmp(&b.0));
     let type_counts: Vec<Value> = counts_vec
         .into_iter()
         .map(|(ty, count)| json!({ "type": ty, "count": count }))
         .collect();
 
     let mut targets_vec: Vec<_> = targets.into_iter().collect();
-    targets_vec.sort_by(|a, b| a.0.cmp(&b.0));
+    targets_vec.sort_unstable_by(|a, b| a.0.cmp(&b.0));
     let target_groups: Vec<Value> = targets_vec
         .into_iter()
         .map(|(ty, set)| {
@@ -1179,14 +1179,14 @@ pub fn shape_decompile_meta(addr: &str, raw: &Value) -> Value {
     }
 
     let mut annotation_type_counts_vec: Vec<_> = annotation_type_counts.into_iter().collect();
-    annotation_type_counts_vec.sort_by(|a, b| a.0.cmp(&b.0));
+    annotation_type_counts_vec.sort_unstable_by(|a, b| a.0.cmp(&b.0));
     let annotation_type_counts: Vec<Value> = annotation_type_counts_vec
         .into_iter()
         .map(|(name, count)| json!({ "type": name, "count": count }))
         .collect();
 
     let mut function_refs_vec: Vec<_> = function_refs.into_iter().collect();
-    function_refs_vec.sort_by(|a, b| a.0.cmp(&b.0));
+    function_refs_vec.sort_unstable_by(|a, b| a.0.cmp(&b.0));
     let function_refs: Vec<Value> = function_refs_vec
         .into_iter()
         .map(|((name, offset), count)| {
