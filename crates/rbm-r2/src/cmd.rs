@@ -105,7 +105,7 @@ mod tests {
         assert!(has_r2_shell_metacharacters("cmd & background"));
         assert!(has_r2_shell_metacharacters("!shell"));
         assert!(has_r2_shell_metacharacters("cmd $R2_VAR"));
-        assert!(has_r2_shell_metacharacters(r"cmd \; escaped"));
+        assert!(has_r2_shell_metacharacters(r"cmd \ escaped"));
         assert!(!has_r2_shell_metacharacters("aflj"));
     }
 }

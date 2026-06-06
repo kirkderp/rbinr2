@@ -220,10 +220,16 @@ pub fn project_class_methods(value: &Value, classname: &str) -> Value {
         })
         .collect();
     methods.sort_unstable_by(|a, b| {
-        a.get("name")
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .cmp(b.get("name").and_then(Value::as_str).unwrap_or(""))
+        (
+            a.get("name").and_then(Value::as_str).unwrap_or(""),
+            a.get("realname").and_then(Value::as_str).unwrap_or(""),
+            a.get("addr").and_then(Value::as_str).unwrap_or(""),
+        )
+            .cmp(&(
+                b.get("name").and_then(Value::as_str).unwrap_or(""),
+                b.get("realname").and_then(Value::as_str).unwrap_or(""),
+                b.get("addr").and_then(Value::as_str).unwrap_or(""),
+            ))
     });
 
     let mut fields: Vec<Value> = target
@@ -243,10 +249,16 @@ pub fn project_class_methods(value: &Value, classname: &str) -> Value {
         })
         .collect();
     fields.sort_unstable_by(|a, b| {
-        a.get("name")
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .cmp(b.get("name").and_then(Value::as_str).unwrap_or(""))
+        (
+            a.get("name").and_then(Value::as_str).unwrap_or(""),
+            a.get("type").and_then(Value::as_str).unwrap_or(""),
+            a.get("addr").and_then(Value::as_str).unwrap_or(""),
+        )
+            .cmp(&(
+                b.get("name").and_then(Value::as_str).unwrap_or(""),
+                b.get("type").and_then(Value::as_str).unwrap_or(""),
+                b.get("addr").and_then(Value::as_str).unwrap_or(""),
+            ))
     });
 
     json!({
