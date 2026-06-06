@@ -1,0 +1,4 @@
+## 2024-06-06 - Radare2 Command Injection via Metacharacters
+**Vulnerability:** Radare2 `r2pipe` commands were vulnerable to command injection and variable expansion because `$` and `\` were not blocked as shell metacharacters.
+**Learning:** Radare2 has internal shell-like capabilities. Input sanitization for `r2pipe` commands must exhaustively block shell metacharacters like `<`, `>`, `&`, `!`, `$`, and `\` to prevent arbitrary file writes, variable expansion, and command injection.
+**Prevention:** Use `crate::cmd::has_r2_shell_metacharacters` as the centralized single source of truth for sanitization and ensure it includes `$` and `\`.
