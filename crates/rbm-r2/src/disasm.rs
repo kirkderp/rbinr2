@@ -86,7 +86,7 @@ fn check_no_r2_separators(label: &str, value: &str) -> ToolResult<()> {
     }
     if crate::cmd::has_r2_shell_metacharacters(value) {
         return Err(ToolError::invalid(format!(
-            "{label} contains an r2 command separator: {value:?}"
+            "{label} contains an r2 command metacharacter: {value:?}"
         )));
     }
     Ok(())
