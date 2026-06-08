@@ -127,6 +127,7 @@ impl Session {
     ) -> ToolResult<AsmSettingsSnapshot> {
         let mut snapshot = AsmSettingsSnapshot::default();
         if let Some(arch) = arch {
+            validate_asm_arch("arch override", arch)?;
             snapshot.arch = Some(self.cmd("e asm.arch").await?.trim().to_string());
             self.cmd(format!("e asm.arch={arch}")).await?;
         }
@@ -147,6 +148,7 @@ impl Session {
             self.cmd(format!("e asm.bits={bits}")).await?;
         }
         if let Some(arch) = snapshot.arch {
+            validate_asm_arch("restored arch", &arch)?;
             self.cmd(format!("e asm.arch={arch}")).await?;
         }
         Ok(())
@@ -218,6 +220,15 @@ impl Session {
     }
 }
 
+fn validate_asm_arch(label: &str, value: &str) -> ToolResult<()> {
+    if crate::cmd::has_r2_shell_metacharacters(value) {
+        return Err(ToolError::invalid(format!(
+            "{label} contains an r2 shell metacharacter: {value:?}"
+        )));
+    }
+    Ok(())
+}
+
 fn spawn_with_startup_analysis(path: &Path) -> Result<R2Pipe, String> {
     let mut errors = Vec::new();
     for command in STARTUP_ANALYSIS_COMMANDS {
@@ -231,6 +242,18 @@ fn spawn_with_startup_analysis(path: &Path) -> Result<R2Pipe, String> {
         "r2 startup analysis failed for all configured commands: {}",
         errors.join("; ")
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_asm_arch;
+
+    #[test]
+    fn asm_arch_validation_rejects_shell_metacharacters() {
+        assert!(validate_asm_arch("arch override", "x86").is_ok());
+        let err = validate_asm_arch("arch override", "x86; !sh").unwrap_err();
+        assert!(err.to_string().contains("shell metacharacter"));
+    }
 }
 
 fn spawn_once(path: &Path, analysis_command: Option<&str>) -> Result<R2Pipe, String> {
