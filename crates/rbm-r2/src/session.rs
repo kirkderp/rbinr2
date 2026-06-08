@@ -127,6 +127,11 @@ impl Session {
     ) -> ToolResult<AsmSettingsSnapshot> {
         let mut snapshot = AsmSettingsSnapshot::default();
         if let Some(arch) = arch {
+            if crate::cmd::has_r2_shell_metacharacters(arch) {
+                return Err(ToolError::invalid(format!(
+                    "arch override contains an r2 command separator: {arch:?}"
+                )));
+            }
             snapshot.arch = Some(self.cmd("e asm.arch").await?.trim().to_string());
             self.cmd(format!("e asm.arch={arch}")).await?;
         }
@@ -147,6 +152,11 @@ impl Session {
             self.cmd(format!("e asm.bits={bits}")).await?;
         }
         if let Some(arch) = snapshot.arch {
+            if crate::cmd::has_r2_shell_metacharacters(&arch) {
+                return Err(ToolError::invalid(format!(
+                    "restored arch contains an r2 command separator: {arch:?}"
+                )));
+            }
             self.cmd(format!("e asm.arch={arch}")).await?;
         }
         Ok(())
