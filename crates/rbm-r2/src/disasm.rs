@@ -546,12 +546,12 @@ pub async fn variable_xrefs(session: &Session, addr: &str) -> ToolResult<Value> 
 #[must_use]
 pub fn shape_esil_accesses(addr: &str, mode: &str, count: u32, raw: &Value) -> Value {
     let access = raw.as_object();
-    let registers_all = clone_array_field(access, "A");
-    let registers_input = clone_array_field(access, "I");
-    let registers_read = clone_array_field(access, "R");
-    let registers_written = clone_array_field(access, "W");
-    let registers_not_written = clone_array_field(access, "N");
-    let values = clone_array_field(access, "V");
+    let registers_all = array_field_slice(access, "A");
+    let registers_input = array_field_slice(access, "I");
+    let registers_read = array_field_slice(access, "R");
+    let registers_written = array_field_slice(access, "W");
+    let registers_not_written = array_field_slice(access, "N");
+    let values = array_field_slice(access, "V");
     let memory_reads = hex_array_field(access, "@R");
     let memory_writes = hex_array_field(access, "@W");
     json!({
@@ -573,7 +573,7 @@ pub fn shape_esil_accesses(addr: &str, mode: &str, count: u32, raw: &Value) -> V
         "registers_read": registers_read,
         "registers_written": registers_written,
         "registers_not_written": registers_not_written,
-        "values_preview": values.into_iter().take(50).collect::<Vec<_>>(),
+        "values_preview": values.iter().take(50).collect::<Vec<_>>(),
         "memory_reads": memory_reads,
         "memory_writes": memory_writes,
     })
@@ -596,18 +596,20 @@ pub fn shape_variable_xrefs(addr: &str, raw: &Value) -> Value {
     })
 }
 
-fn clone_array_field(access: Option<&serde_json::Map<String, Value>>, key: &str) -> Vec<Value> {
+// ⚡ Bolt: Return a slice reference rather than a full clone of the array's Value nodes
+// Impact: Prevents massive allocations during JSON deserialization and processing
+fn array_field_slice<'a>(access: Option<&'a serde_json::Map<String, Value>>, key: &str) -> &'a [Value] {
     access
         .and_then(|m| m.get(key))
         .and_then(Value::as_array)
-        .cloned()
+        .map(Vec::as_slice)
         .unwrap_or_default()
 }
 
 fn hex_array_field(access: Option<&serde_json::Map<String, Value>>, key: &str) -> Vec<Value> {
-    clone_array_field(access, key)
-        .into_iter()
-        .filter_map(|value| value_to_hex(&value))
+    array_field_slice(access, key)
+        .iter()
+        .filter_map(value_to_hex)
         .map(Value::String)
         .collect()
 }
@@ -891,12 +893,12 @@ fn attach_predecessors(projected_blocks: Vec<Value>, edges: &[Value]) -> Vec<Val
 }
 
 pub fn shape_function_refs(addr: &str, raw: &Value) -> Value {
-    let refs = raw.as_array().cloned().unwrap_or_default();
+    let refs = raw.as_array().map(Vec::as_slice).unwrap_or_default();
     let mut counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     let mut targets: std::collections::HashMap<String, std::collections::HashSet<u64>> =
         std::collections::HashMap::new();
 
-    for item in &refs {
+    for item in refs {
         let ty = item
             .get("type")
             .and_then(Value::as_str)
@@ -997,7 +999,7 @@ pub fn project_disassembly_op(op: &Value) -> Value {
 }
 
 pub fn shape_disassembly_range(addr: &str, raw: &Value) -> Value {
-    let ops = raw.as_array().cloned().unwrap_or_default();
+    let ops = raw.as_array().map(Vec::as_slice).unwrap_or_default();
     let projected: Vec<Value> = ops.iter().map(project_disassembly_op).collect();
     json!({
         "addr": addr,

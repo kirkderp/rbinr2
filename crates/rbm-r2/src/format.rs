@@ -94,10 +94,12 @@ pub async fn vtables(session: &Session, offset: usize, limit: usize) -> ToolResu
 
 #[must_use]
 pub fn project_vtables(raw: &Value, offset: usize, limit: usize) -> Value {
-    let rows = raw.as_array().cloned().unwrap_or_default();
+    // ⚡ Bolt: Use map(Vec::as_slice) instead of cloned() to yield references
+    // Impact: Avoids deep-cloning potentially thousands of vtable entries
+    let rows = raw.as_array().map(Vec::as_slice).unwrap_or_default();
     let total = rows.len();
     let limit = if limit == 0 { 50 } else { limit.min(500) };
-    let vtables: Vec<Value> = rows.into_iter().skip(offset).take(limit).collect();
+    let vtables: Vec<&Value> = rows.iter().skip(offset).take(limit).collect();
     json!({
         "schema": "rbm.r2.vtables.v0",
         "offset": offset,
