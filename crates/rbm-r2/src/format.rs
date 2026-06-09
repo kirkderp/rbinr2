@@ -99,7 +99,7 @@ pub fn project_vtables(raw: &Value, offset: usize, limit: usize) -> Value {
     let rows = raw.as_array().map(Vec::as_slice).unwrap_or_default();
     let total = rows.len();
     let limit = if limit == 0 { 50 } else { limit.min(500) };
-    let vtables: Vec<&Value> = rows.iter().skip(offset).take(limit).collect();
+    let vtables: Vec<Value> = rows.iter().skip(offset).take(limit).cloned().collect();
     json!({
         "schema": "rbm.r2.vtables.v0",
         "offset": offset,

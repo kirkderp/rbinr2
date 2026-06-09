@@ -573,7 +573,7 @@ pub fn shape_esil_accesses(addr: &str, mode: &str, count: u32, raw: &Value) -> V
         "registers_read": registers_read,
         "registers_written": registers_written,
         "registers_not_written": registers_not_written,
-        "values_preview": values.iter().take(50).collect::<Vec<_>>(),
+        "values_preview": values.iter().take(50).cloned().collect::<Vec<_>>(),
         "memory_reads": memory_reads,
         "memory_writes": memory_writes,
     })

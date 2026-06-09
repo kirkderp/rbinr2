@@ -21,4 +21,3 @@ pub mod types;
 pub mod windows_driver;
 
 pub use session::{CloseOutcome, OpenOutcome, Session, SessionManager};
-pub mod test_json;
