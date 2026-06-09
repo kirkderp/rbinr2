@@ -598,7 +598,10 @@ pub fn shape_variable_xrefs(addr: &str, raw: &Value) -> Value {
 
 // ⚡ Bolt: Return a slice reference rather than a full clone of the array's Value nodes
 // Impact: Prevents massive allocations during JSON deserialization and processing
-fn array_field_slice<'a>(access: Option<&'a serde_json::Map<String, Value>>, key: &str) -> &'a [Value] {
+fn array_field_slice<'a>(
+    access: Option<&'a serde_json::Map<String, Value>>,
+    key: &str,
+) -> &'a [Value] {
     access
         .and_then(|m| m.get(key))
         .and_then(Value::as_array)
