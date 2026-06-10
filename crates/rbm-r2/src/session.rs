@@ -127,7 +127,7 @@ impl Session {
     ) -> ToolResult<AsmSettingsSnapshot> {
         let mut snapshot = AsmSettingsSnapshot::default();
         if let Some(arch) = arch {
-            validate_asm_arch("arch override", arch)?;
+            validate_asm_setting("arch override", arch)?;
             snapshot.arch = Some(self.cmd("e asm.arch").await?.trim().to_string());
             self.cmd(format!("e asm.arch={arch}")).await?;
         }
@@ -145,10 +145,11 @@ impl Session {
     /// Returns an error if restoring an r2 asm setting fails.
     pub async fn restore_asm_settings(&self, snapshot: AsmSettingsSnapshot) -> ToolResult<()> {
         if let Some(bits) = snapshot.bits {
+            validate_asm_setting("restored bits", &bits)?;
             self.cmd(format!("e asm.bits={bits}")).await?;
         }
         if let Some(arch) = snapshot.arch {
-            validate_asm_arch("restored arch", &arch)?;
+            validate_asm_setting("restored arch", &arch)?;
             self.cmd(format!("e asm.arch={arch}")).await?;
         }
         Ok(())
@@ -220,7 +221,7 @@ impl Session {
     }
 }
 
-fn validate_asm_arch(label: &str, value: &str) -> ToolResult<()> {
+fn validate_asm_setting(label: &str, value: &str) -> ToolResult<()> {
     if crate::cmd::has_r2_shell_metacharacters(value) {
         return Err(ToolError::invalid(format!(
             "{label} contains an r2 shell metacharacter: {value:?}"
@@ -246,12 +247,12 @@ fn spawn_with_startup_analysis(path: &Path) -> Result<R2Pipe, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::validate_asm_arch;
+    use super::validate_asm_setting;
 
     #[test]
     fn asm_arch_validation_rejects_shell_metacharacters() {
-        assert!(validate_asm_arch("arch override", "x86").is_ok());
-        let err = validate_asm_arch("arch override", "x86; !sh").unwrap_err();
+        assert!(validate_asm_setting("arch override", "x86").is_ok());
+        let err = validate_asm_setting("arch override", "x86; !sh").unwrap_err();
         assert!(err.to_string().contains("shell metacharacter"));
     }
 }
