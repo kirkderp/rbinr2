@@ -174,11 +174,7 @@ impl Session {
                 Err(_) => {}
             }
         }
-        if let Some(err) = first_error {
-            Err(err)
-        } else {
-            Ok(())
-        }
+        first_error.map_or(Ok(()), Err)
     }
 
     async fn spawn(binary_path: PathBuf, tool_timeout: Duration) -> ToolResult<Arc<Self>> {
