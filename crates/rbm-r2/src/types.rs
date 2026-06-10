@@ -51,20 +51,19 @@ pub async fn types_view(
             let types = raw
                 .get("types")
                 .and_then(Value::as_array)
-                .cloned()
+                .map(Vec::as_slice)
                 .unwrap_or_default();
-            let filtered = filter_named_rows(Value::Array(types), filter);
-            paginate(filtered, offset, limit)
+            let filtered = filter_named_rows(types, filter);
+            paginate(Value::Array(filtered), offset, limit)
         }
         "functions" => {
             let raw = session.cmdj("tfj").await?;
-            let types = raw
-                .get("types")
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_else(|| raw.as_array().cloned().unwrap_or_default());
-            let filtered = filter_named_rows(Value::Array(types), filter);
-            paginate(filtered, offset, limit)
+            let types = raw.get("types").and_then(Value::as_array).map_or_else(
+                || raw.as_array().map(Vec::as_slice).unwrap_or_default(),
+                Vec::as_slice,
+            );
+            let filtered = filter_named_rows(types, filter);
+            paginate(Value::Array(filtered), offset, limit)
         }
         "structs" => text_result(&session.cmd("ts").await?),
         "enums" => text_result(&session.cmd("te").await?),
@@ -121,24 +120,20 @@ fn text_result(raw: &str) -> Value {
     })
 }
 
-fn filter_named_rows(value: Value, filter: Option<&str>) -> Value {
+fn filter_named_rows(rows: &[Value], filter: Option<&str>) -> Vec<Value> {
     let Some(pattern) = filter.filter(|s| !s.is_empty()) else {
-        return value;
+        return rows.to_vec();
     };
     let needle = pattern.to_lowercase();
-    let Value::Array(rows) = value else {
-        return value;
-    };
-    Value::Array(
-        rows.into_iter()
-            .filter(|row| {
-                ["name", "type"]
-                    .iter()
-                    .filter_map(|key| row.get(*key).and_then(Value::as_str))
-                    .any(|s| glob_or_substring_match(&needle, &s.to_lowercase()))
-            })
-            .collect(),
-    )
+    rows.iter()
+        .filter(|row| {
+            ["name", "type"]
+                .iter()
+                .filter_map(|key| row.get(*key).and_then(Value::as_str))
+                .any(|s| glob_or_substring_match(&needle, &s.to_lowercase()))
+        })
+        .cloned()
+        .collect()
 }
 
 /// Normalize accepted type modes.
