@@ -206,9 +206,9 @@ pub fn project_class_methods(value: &Value, classname: &str) -> Value {
     let mut methods: Vec<Value> = target
         .get("methods")
         .and_then(Value::as_array)
-        .cloned()
+        .map(Vec::as_slice)
         .unwrap_or_default()
-        .into_iter()
+        .iter()
         .map(|item| {
             json!({
                 "name": item.get("name").and_then(Value::as_str).unwrap_or(""),
@@ -235,9 +235,9 @@ pub fn project_class_methods(value: &Value, classname: &str) -> Value {
     let mut fields: Vec<Value> = target
         .get("fields")
         .and_then(Value::as_array)
-        .cloned()
+        .map(Vec::as_slice)
         .unwrap_or_default()
-        .into_iter()
+        .iter()
         .map(|item| {
             json!({
                 "name": item.get("name").and_then(Value::as_str).unwrap_or(""),

@@ -133,7 +133,7 @@ pub fn summarize_basic_blocks(value: &Value) -> Value {
         let ops = block
             .get("ops")
             .and_then(Value::as_array)
-            .cloned()
+            .map(Vec::as_slice)
             .unwrap_or_default();
         if ops
             .iter()

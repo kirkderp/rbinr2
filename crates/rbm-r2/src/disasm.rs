@@ -720,7 +720,7 @@ pub fn shape_basic_blocks(addr: &str, blocks: Value) -> Value {
 pub fn shape_function_cfg(addr: &str, raw: &Value) -> Value {
     let func = first_cfg_function(raw);
     let blocks = cfg_blocks(&func);
-    let projection = project_cfg_blocks(&blocks);
+    let projection = project_cfg_blocks(blocks);
     let blocks_with_preds = attach_predecessors(projection.blocks, &projection.edges);
 
     json!({
@@ -744,10 +744,10 @@ fn first_cfg_function(raw: &Value) -> Value {
         .unwrap_or_else(|| json!({}))
 }
 
-fn cfg_blocks(func: &Value) -> Vec<Value> {
+fn cfg_blocks(func: &Value) -> &[Value] {
     func.get("blocks")
         .and_then(Value::as_array)
-        .cloned()
+        .map(Vec::as_slice)
         .unwrap_or_default()
 }
 
@@ -789,7 +789,7 @@ fn project_cfg_block(
     let ops = block
         .get("ops")
         .and_then(Value::as_array)
-        .cloned()
+        .map(Vec::as_slice)
         .unwrap_or_default();
     let mut successors = cfg_successors(idx, baddr, jump, fail, index_by_addr, edges);
     successors.sort_unstable();
@@ -802,8 +802,8 @@ fn project_cfg_block(
         "jump": hex_opt(jump),
         "fail": hex_opt(fail),
         "op_count": ops.len(),
-        "call_count": cfg_call_count(&ops),
-        "string_ref_count": cfg_string_ref_count(&ops),
+        "call_count": cfg_call_count(ops),
+        "string_ref_count": cfg_string_ref_count(ops),
         "successors": successors,
     })
 }
@@ -970,12 +970,12 @@ pub fn project_disassembly_op(op: &Value) -> Value {
     let refs = op
         .get("refs")
         .and_then(Value::as_array)
-        .cloned()
+        .map(Vec::as_slice)
         .unwrap_or_default();
     let xrefs = op
         .get("xrefs")
         .and_then(Value::as_array)
-        .cloned()
+        .map(Vec::as_slice)
         .unwrap_or_default();
     let refs_preview: Vec<Value> = refs.iter().take(4).map(project_ref).collect();
     let xrefs_preview: Vec<Value> = xrefs.iter().take(4).map(project_ref).collect();
@@ -1013,7 +1013,7 @@ pub fn shape_disassembly_function(addr: &str, raw: &Value) -> Value {
     let ops = raw
         .get("ops")
         .and_then(Value::as_array)
-        .cloned()
+        .map(Vec::as_slice)
         .unwrap_or_default();
     let projected: Vec<Value> = ops.iter().map(project_disassembly_op).collect();
     json!({
@@ -1123,7 +1123,7 @@ pub fn shape_decompile_meta(addr: &str, raw: &Value) -> Value {
     let annotations = raw
         .get("annotations")
         .and_then(Value::as_array)
-        .cloned()
+        .map(Vec::as_slice)
         .unwrap_or_default();
 
     let mut annotation_type_counts: std::collections::HashMap<String, usize> =
@@ -1135,7 +1135,7 @@ pub fn shape_decompile_meta(addr: &str, raw: &Value) -> Value {
     let mut function_parameters: std::collections::HashSet<String> =
         std::collections::HashSet::new();
 
-    for ann in &annotations {
+    for ann in annotations {
         let ty = ann
             .get("type")
             .and_then(Value::as_str)
@@ -1406,17 +1406,17 @@ pub fn project_function_vars(addr: &str, raw: &Value) -> Value {
     let reg = raw
         .get("reg")
         .and_then(Value::as_array)
-        .cloned()
+        .map(Vec::as_slice)
         .unwrap_or_default();
     let stack = raw
         .get("sp")
         .and_then(Value::as_array)
-        .cloned()
+        .map(Vec::as_slice)
         .unwrap_or_default();
     let bp = raw
         .get("bp")
         .and_then(Value::as_array)
-        .cloned()
+        .map(Vec::as_slice)
         .unwrap_or_default();
 
     let reg_vars: Vec<Value> = reg
@@ -1475,10 +1475,10 @@ pub fn project_function_signature(addr: &str, raw: &Value) -> Value {
     let args = first
         .get("args")
         .and_then(Value::as_array)
-        .cloned()
+        .map(Vec::as_slice)
         .unwrap_or_default();
     let args: Vec<Value> = args
-        .into_iter()
+        .iter()
         .map(|arg| {
             json!({
                 "name": arg.get("name").and_then(Value::as_str).unwrap_or(""),
