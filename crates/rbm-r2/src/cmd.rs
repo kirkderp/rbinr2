@@ -68,7 +68,7 @@ pub fn has_r2_shell_metacharacters(value: &str) -> bool {
     value.chars().any(|c| {
         matches!(
             c,
-            ';' | '\n' | '\r' | '|' | '`' | '>' | '<' | '&' | '!' | '$' | '\\'
+            ';' | '\n' | '\r' | '|' | '`' | '>' | '<' | '&' | '!' | '$' | '\\' | '"' | '\''
         )
     })
 }
@@ -106,6 +106,8 @@ mod tests {
         assert!(has_r2_shell_metacharacters("!shell"));
         assert!(has_r2_shell_metacharacters("cmd $R2_VAR"));
         assert!(has_r2_shell_metacharacters(r"cmd \ escaped"));
+        assert!(has_r2_shell_metacharacters("cmd \"injection\""));
+        assert!(has_r2_shell_metacharacters("cmd 'injection'"));
         assert!(!has_r2_shell_metacharacters("aflj"));
     }
 }
