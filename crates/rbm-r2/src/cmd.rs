@@ -68,7 +68,7 @@ pub fn has_r2_shell_metacharacters(value: &str) -> bool {
     value.chars().any(|c| {
         matches!(
             c,
-            ';' | '\n' | '\r' | '|' | '`' | '>' | '<' | '&' | '!' | '$' | '\\'
+            ';' | '\n' | '\r' | '|' | '`' | '>' | '<' | '&' | '!' | '$' | '\\' | '\'' | '"'
         )
     })
 }
@@ -91,6 +91,12 @@ mod tests {
         assert!(validate_query_command("ij; wx 90").is_err());
         assert!(validate_query_command("!sh").is_err());
         assert!(validate_query_command("ij > /tmp/out").is_err());
+    }
+
+    #[test]
+    fn rejects_quotes() {
+        assert!(has_r2_shell_metacharacters("cmd ' injection"));
+        assert!(has_r2_shell_metacharacters("cmd \" injection"));
     }
 
     #[test]
